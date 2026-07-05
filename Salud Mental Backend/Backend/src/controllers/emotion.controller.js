@@ -2,15 +2,24 @@ import { pool } from "../config/db.js";
 
 export async function createEmotion(req, res) {
   try {
-    const { mood, intensity, note } = req.body;
+    const { mood, emotion, intensity, note, description } = req.body;
 
-    if (!mood || !intensity) {
+    const selectedMood = mood || emotion;
+    const selectedNote = note || description || null;
+
+    if (!selectedMood || intensity === undefined) {
       return res.status(400).json({
-        message: "El estado de ánimo y la intensidad son obligatorios"
+        message: "La emoción y la intensidad son obligatorias"
       });
     }
 
-    if (intensity < 1 || intensity > 10) {
+    const numericIntensity = Number(intensity);
+
+    if (
+      Number.isNaN(numericIntensity) ||
+      numericIntensity < 1 ||
+      numericIntensity > 10
+    ) {
       return res.status(400).json({
         message: "La intensidad debe estar entre 1 y 10"
       });
@@ -20,13 +29,14 @@ export async function createEmotion(req, res) {
       `INSERT INTO emotions (user_id, mood, intensity, note)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [req.user.id, mood, intensity, note]
+      [req.user.id, selectedMood, numericIntensity, selectedNote]
     );
 
     await pool.query(
       `UPDATE gamification
        SET points = points + 10,
-           level = FLOOR((points + 10) / 100) + 1
+           level = FLOOR((points + 10) / 100) + 1,
+           updated_at = CURRENT_TIMESTAMP
        WHERE user_id = $1`,
       [req.user.id]
     );
@@ -67,6 +77,48 @@ export async function getEmotions(req, res) {
   }
 }
 
+export async function getEmotionHistory(req, res) {
+  try {
+    const result = await pool.query(
+      `SELECT id, user_id, mood, intensity, note, created_at,
+              TO_CHAR(created_at, 'YYYY-MM-DD') AS record_date
+       FROM emotions
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+
+    const history = result.rows.reduce((acc, item) => {
+      const date = item.record_date;
+
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+
+      acc[date].push({
+        id: item.id,
+        user_id: item.user_id,
+        mood: item.mood,
+        intensity: item.intensity,
+        note: item.note,
+        created_at: item.created_at
+      });
+
+      return acc;
+    }, {});
+
+    res.json({
+      message: "Historial emocional obtenido correctamente",
+      history
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al obtener historial emocional",
+      error: error.message
+    });
+  }
+}
+
 export async function getEmotionStats(req, res) {
   try {
     const result = await pool.query(
@@ -82,7 +134,8 @@ export async function getEmotionStats(req, res) {
       return res.json({
         total_records: 0,
         average_intensity: 0,
-        most_frequent_mood: null
+        most_frequent_mood: null,
+        mood_count: {}
       });
     }
 
@@ -121,7 +174,9 @@ export async function deleteEmotion(req, res) {
     const { id } = req.params;
 
     const exists = await pool.query(
-      "SELECT * FROM emotions WHERE id = $1 AND user_id = $2",
+      `SELECT *
+       FROM emotions
+       WHERE id = $1 AND user_id = $2`,
       [id, req.user.id]
     );
 
@@ -132,7 +187,8 @@ export async function deleteEmotion(req, res) {
     }
 
     await pool.query(
-      "DELETE FROM emotions WHERE id = $1 AND user_id = $2",
+      `DELETE FROM emotions
+       WHERE id = $1 AND user_id = $2`,
       [id, req.user.id]
     );
 
@@ -184,7 +240,8 @@ async function insertAchievement(userId, code) {
   const achievementId = achievement.rows[0].id;
 
   const exists = await pool.query(
-    `SELECT id FROM user_achievements
+    `SELECT id
+     FROM user_achievements
      WHERE user_id = $1 AND achievement_id = $2`,
     [userId, achievementId]
   );
