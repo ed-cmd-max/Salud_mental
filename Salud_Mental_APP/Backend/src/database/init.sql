@@ -12,9 +12,13 @@ CREATE TABLE IF NOT EXISTS emotions (
     mood VARCHAR(50) NOT NULL,
     intensity INTEGER NOT NULL CHECK (intensity BETWEEN 1 AND 10),
     note TEXT,
+    record_date DATE NOT NULL DEFAULT CURRENT_DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_emotions_user_record_date
+ON emotions (user_id, record_date DESC);
 
 CREATE TABLE IF NOT EXISTS activities (
     id SERIAL PRIMARY KEY,
