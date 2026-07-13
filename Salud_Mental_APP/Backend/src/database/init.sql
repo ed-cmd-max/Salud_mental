@@ -25,18 +25,52 @@ CREATE TABLE IF NOT EXISTS activities (
     title VARCHAR(150) NOT NULL,
     description TEXT NOT NULL,
     category VARCHAR(100),
+    instructions TEXT NOT NULL,
+    estimated_duration INTEGER NOT NULL
+        CHECK (estimated_duration BETWEEN 1 AND 180),
+    status VARCHAR(20) NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'inactive')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_activities_status
+ON activities (status);
 
 CREATE TABLE IF NOT EXISTS user_activities (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     activity_id INTEGER NOT NULL,
     reflection TEXT NOT NULL,
+    activity_status VARCHAR(20) NOT NULL DEFAULT 'completed'
+        CHECK (
+            activity_status IN (
+                'started',
+                'in_progress',
+                'completed'
+            )
+        ),
+    observation TEXT,
+    points_awarded BOOLEAN NOT NULL DEFAULT FALSE,
     completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (activity_id)
+        REFERENCES activities(id)
+        ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_user_activities_user_date
+ON user_activities (user_id, completed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_activities_user_activity
+ON user_activities (user_id, activity_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_user_activity_single_reward
+ON user_activities (user_id, activity_id)
+WHERE points_awarded = TRUE;
 
 CREATE TABLE IF NOT EXISTS gamification (
     id SERIAL PRIMARY KEY,
@@ -64,22 +98,69 @@ CREATE TABLE IF NOT EXISTS user_achievements (
     UNIQUE (user_id, achievement_id)
 );
 
-INSERT INTO activities (title, description, category)
-SELECT 'Registro de pensamiento', 'Actividad para identificar pensamientos negativos y reflexionar sobre ellos.', 'Terapia Cognitivo-Conductual'
+INSERT INTO activities (
+    title,
+    description,
+    category,
+    instructions,
+    estimated_duration,
+    status
+)
+SELECT
+    'Registro de pensamiento',
+    'Actividad para identificar pensamientos negativos y reflexionar sobre ellos.',
+    'Terapia Cognitivo-Conductual',
+    'Describe una situación reciente que haya generado malestar. Escribe el pensamiento automático que apareció, identifica la emoción y su intensidad, analiza las evidencias a favor y en contra, y formula un pensamiento alternativo más equilibrado.',
+    15,
+    'active'
 WHERE NOT EXISTS (
-    SELECT 1 FROM activities WHERE title = 'Registro de pensamiento'
+    SELECT 1
+    FROM activities
+    WHERE title = 'Registro de pensamiento'
 );
 
-INSERT INTO activities (title, description, category)
-SELECT 'Respiración consciente', 'Ejercicio de respiración para reducir tensión emocional.', 'Relajación'
+
+INSERT INTO activities (
+    title,
+    description,
+    category,
+    instructions,
+    estimated_duration,
+    status
+)
+SELECT
+    'Respiración consciente',
+    'Ejercicio de respiración para reducir tensión emocional.',
+    'Relajación',
+    'Busca un lugar tranquilo y adopta una postura cómoda. Inhala lentamente durante cuatro segundos, mantén el aire durante dos segundos y exhala durante seis segundos. Repite el ejercicio cinco veces prestando atención a la respiración.',
+    5,
+    'active'
 WHERE NOT EXISTS (
-    SELECT 1 FROM activities WHERE title = 'Respiración consciente'
+    SELECT 1
+    FROM activities
+    WHERE title = 'Respiración consciente'
 );
 
-INSERT INTO activities (title, description, category)
-SELECT 'Diario emocional', 'Actividad para escribir cómo se sintió el usuario durante el día.', 'Seguimiento emocional'
+
+INSERT INTO activities (
+    title,
+    description,
+    category,
+    instructions,
+    estimated_duration,
+    status
+)
+SELECT
+    'Diario emocional',
+    'Actividad para escribir cómo se sintió el usuario durante el día.',
+    'Seguimiento emocional',
+    'Describe el acontecimiento más importante del día, la emoción que produjo, la intensidad experimentada y la forma en que respondiste. Finaliza escribiendo una acción positiva que puedas realizar.',
+    10,
+    'active'
 WHERE NOT EXISTS (
-    SELECT 1 FROM activities WHERE title = 'Diario emocional'
+    SELECT 1
+    FROM activities
+    WHERE title = 'Diario emocional'
 );
 
 INSERT INTO achievements (code, title, description)
