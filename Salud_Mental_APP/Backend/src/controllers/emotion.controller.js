@@ -1,4 +1,5 @@
 import { pool } from "../config/db.js";
+import { applyGamificationEvent } from "../services/gamification.service.js";
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -209,6 +210,8 @@ function calculateSummary(records) {
 }
 
 export async function createEmotion(req, res) {
+  let client;
+
   try {
     const {
       mood,
@@ -236,25 +239,35 @@ export async function createEmotion(req, res) {
       fecha_registro
     );
 
-    if (!selectedMood || intensity === undefined) {
+    if (
+      !selectedMood ||
+      intensity === undefined
+    ) {
       return res.status(400).json({
-        message: "La emoción y la intensidad son obligatorias"
+        message:
+          "La emoción y la intensidad son obligatorias"
       });
     }
 
     if (selectedMood.length > 50) {
       return res.status(400).json({
-        message: "La emoción no puede superar los 50 caracteres"
+        message:
+          "La emoción no puede superar los 50 caracteres"
       });
     }
 
-    if (selectedNote && selectedNote.length > 500) {
+    if (
+      selectedNote &&
+      selectedNote.length > 500
+    ) {
       return res.status(400).json({
-        message: "La descripción no puede superar los 500 caracteres"
+        message:
+          "La descripción no puede superar los 500 caracteres"
       });
     }
 
-    const numericIntensity = Number(intensity);
+    const numericIntensity =
+      Number(intensity);
 
     if (
       !Number.isInteger(numericIntensity) ||
@@ -262,31 +275,46 @@ export async function createEmotion(req, res) {
       numericIntensity > 10
     ) {
       return res.status(400).json({
-        message: "La intensidad debe ser un número entero entre 1 y 10"
+        message:
+          "La intensidad debe ser un número entero entre 1 y 10"
       });
     }
 
-    if (selectedDate && !isValidDate(selectedDate)) {
+    if (
+      selectedDate &&
+      !isValidDate(selectedDate)
+    ) {
       return res.status(400).json({
         message:
           "La fecha de registro debe tener formato YYYY-MM-DD y ser válida"
       });
     }
 
-    const dateValidation = await pool.query(
-      `SELECT
-        COALESCE($1::date, CURRENT_DATE) <= CURRENT_DATE
-        AS valid_date`,
-      [selectedDate]
-    );
+    client = await pool.connect();
+    await client.query("BEGIN");
 
-    if (!dateValidation.rows[0].valid_date) {
+    const dateValidation =
+      await client.query(
+        `SELECT
+          COALESCE(
+            $1::date,
+            CURRENT_DATE
+          ) <= CURRENT_DATE AS valid_date`,
+        [selectedDate]
+      );
+
+    if (
+      !dateValidation.rows[0].valid_date
+    ) {
+      await client.query("ROLLBACK");
+
       return res.status(400).json({
-        message: "La fecha de registro no puede ser futura"
+        message:
+          "La fecha de registro no puede ser futura"
       });
     }
 
-    const result = await pool.query(
+    const result = await client.query(
       `INSERT INTO emotions (
         user_id,
         mood,
@@ -299,7 +327,10 @@ export async function createEmotion(req, res) {
         $2,
         $3,
         $4,
-        COALESCE($5::date, CURRENT_DATE)
+        COALESCE(
+          $5::date,
+          CURRENT_DATE
+        )
       )
       RETURNING
         id,
@@ -318,28 +349,53 @@ export async function createEmotion(req, res) {
       ]
     );
 
-    await pool.query(
-      `UPDATE gamification
-       SET points = points + 10,
-           level = FLOOR((points + 10) / 100) + 1,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = $1`,
-      [req.user.id]
-    );
+    const gamificationResult =
+      await applyGamificationEvent(
+        client,
+        {
+          userId: req.user.id,
+          eventType:
+            "EMOTION_REGISTERED"
+        }
+      );
 
-    await unlockAchievements(req.user.id);
+    await client.query("COMMIT");
 
     return res.status(201).json({
-      message: "Estado emocional registrado correctamente",
+      message:
+        "Estado emocional registrado correctamente",
+
       emotion: result.rows[0],
-      points_added: 10
+
+      points_added:
+        gamificationResult.points_added,
+
+      progress:
+        gamificationResult.progress
     });
   } catch (error) {
-    console.error("Error al registrar emoción:", error);
+    if (client) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        console.error(
+          "Error al revertir la transacción:",
+          rollbackError
+        );
+      }
+    }
+
+    console.error(
+      "Error al registrar emoción:",
+      error
+    );
 
     return res.status(500).json({
-      message: "Error al registrar emoción"
+      message:
+        "Error al registrar emoción"
     });
+  } finally {
+    client?.release();
   }
 }
 
@@ -537,78 +593,4 @@ export async function deleteEmotion(req, res) {
       message: "Error al eliminar emoción"
     });
   }
-}
-
-async function unlockAchievements(userId) {
-  const emotionCount = await pool.query(
-    `SELECT COUNT(*)
-     FROM emotions
-     WHERE user_id = $1`,
-    [userId]
-  );
-
-  const totalEmotions = Number(
-    emotionCount.rows[0].count
-  );
-
-  if (totalEmotions >= 1) {
-    await insertAchievement(
-      userId,
-      "FIRST_EMOTION"
-    );
-  }
-
-  if (totalEmotions >= 5) {
-    await insertAchievement(
-      userId,
-      "FIVE_EMOTIONS"
-    );
-  }
-
-  const progress = await pool.query(
-    `SELECT level
-     FROM gamification
-     WHERE user_id = $1`,
-    [userId]
-  );
-
-  if (
-    progress.rows.length > 0 &&
-    progress.rows[0].level >= 2
-  ) {
-    await insertAchievement(
-      userId,
-      "LEVEL_TWO"
-    );
-  }
-}
-
-async function insertAchievement(userId, code) {
-  const achievement = await pool.query(
-    `SELECT id
-     FROM achievements
-     WHERE code = $1`,
-    [code]
-  );
-
-  if (achievement.rows.length === 0) {
-    return;
-  }
-
-  const achievementId =
-    achievement.rows[0].id;
-
-  await pool.query(
-    `INSERT INTO user_achievements (
-      user_id,
-      achievement_id
-    )
-    VALUES ($1, $2)
-    ON CONFLICT (
-      user_id,
-      achievement_id
-    )
-    DO NOTHING`,
-    [userId, achievementId]
-  );
 }
