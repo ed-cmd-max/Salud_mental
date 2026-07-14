@@ -74,12 +74,32 @@ WHERE points_awarded = TRUE;
 
 CREATE TABLE IF NOT EXISTS gamification (
     id SERIAL PRIMARY KEY,
+
     user_id INTEGER UNIQUE NOT NULL,
-    points INTEGER DEFAULT 0,
-    level INTEGER DEFAULT 1,
+
+    points INTEGER NOT NULL DEFAULT 0
+        CHECK (points >= 0),
+
+    level INTEGER NOT NULL DEFAULT 1
+        CHECK (level >= 1),
+
+    activities_completed INTEGER NOT NULL DEFAULT 0
+        CHECK (activities_completed >= 0),
+
+    streak_days INTEGER NOT NULL DEFAULT 0
+        CHECK (streak_days >= 0),
+
+    last_activity_date DATE,
+
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_gamification_last_activity
+ON gamification (last_activity_date);
 
 CREATE TABLE IF NOT EXISTS achievements (
     id SERIAL PRIMARY KEY,
@@ -185,4 +205,35 @@ INSERT INTO achievements (code, title, description)
 SELECT 'FIRST_ACTIVITY', 'Primera actividad completada', 'Se desbloquea al completar la primera actividad terapéutica.'
 WHERE NOT EXISTS (
     SELECT 1 FROM achievements WHERE code = 'FIRST_ACTIVITY'
+);
+
+INSERT INTO achievements (
+    code,
+    title,
+    description
+)
+SELECT
+    'THREE_ACTIVITIES',
+    'Tres actividades completadas',
+    'Se desbloquea al completar tres actividades terapéuticas diferentes.'
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM achievements
+    WHERE code = 'THREE_ACTIVITIES'
+);
+
+
+INSERT INTO achievements (
+    code,
+    title,
+    description
+)
+SELECT
+    'THREE_DAY_STREAK',
+    'Racha de tres días',
+    'Se desbloquea al utilizar la aplicación durante tres días consecutivos.'
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM achievements
+    WHERE code = 'THREE_DAY_STREAK'
 );

@@ -1,12 +1,10 @@
 import { pool } from "../config/db.js";
 
-const ACTIVITY_POINTS = 20;
+import { applyGamificationEvent } from "../services/gamification.service.js";
+
 const MAX_RESPONSE_LENGTH = 2000;
 const MAX_OBSERVATION_LENGTH = 500;
 
-/**
- * Convierte un identificador recibido por URL en un entero positivo.
- */
 function parsePositiveId(value) {
   const id = Number(value);
 
@@ -17,10 +15,6 @@ function parsePositiveId(value) {
   return id;
 }
 
-/**
- * Convierte un valor opcional en texto limpio.
- * Devuelve null cuando está vacío.
- */
 function normalizeOptionalText(value) {
   if (value === undefined || value === null) {
     return null;
@@ -33,7 +27,6 @@ function normalizeOptionalText(value) {
 
 /**
  * GET /api/activities
- * Lista únicamente las actividades activas.
  */
 export async function getActivities(req, res) {
   try {
@@ -71,7 +64,6 @@ export async function getActivities(req, res) {
 
 /**
  * GET /api/activities/:id
- * Devuelve el detalle de una actividad activa.
  */
 export async function getActivityById(req, res) {
   try {
@@ -119,15 +111,6 @@ export async function getActivityById(req, res) {
 
 /**
  * POST /api/activities/:id/responses
- * Registra una actividad completada.
- *
- * La primera vez que el usuario completa una actividad:
- * - guarda la respuesta;
- * - suma 20 puntos;
- * - actualiza el nivel;
- * - verifica logros.
- *
- * Las repeticiones se guardan, pero no vuelven a otorgar puntos.
  */
 export async function saveActivityResponse(req, res) {
   let client;
@@ -146,10 +129,14 @@ export async function saveActivityResponse(req, res) {
       req.body.response_usuario ??
       req.body.reflection;
 
-    const userResponse = normalizeOptionalText(responseValue);
-    const observation = normalizeOptionalText(
-      req.body.observation ?? req.body.observacion
-    );
+    const userResponse =
+      normalizeOptionalText(responseValue);
+
+    const observation =
+      normalizeOptionalText(
+        req.body.observation ??
+        req.body.observacion
+      );
 
     if (!userResponse) {
       return res.status(400).json({
@@ -210,8 +197,8 @@ export async function saveActivityResponse(req, res) {
     }
 
     /*
-     * Bloquea temporalmente la combinación usuario-actividad.
-     * Evita que dos solicitudes simultáneas sumen puntos dos veces.
+     * Evita que dos solicitudes simultáneas otorguen
+     * puntos por la misma actividad.
      */
     await client.query(
       `SELECT pg_advisory_xact_lock(
@@ -235,7 +222,8 @@ export async function saveActivityResponse(req, res) {
     const alreadyRewarded =
       previousReward.rows[0].already_rewarded;
 
-    const shouldAwardPoints = !alreadyRewarded;
+    const shouldAwardPoints =
+      !alreadyRewarded;
 
     const responseResult = await client.query(
       `INSERT INTO user_activities (
@@ -274,59 +262,15 @@ export async function saveActivityResponse(req, res) {
       ]
     );
 
-    /*
-     * Crea un progreso inicial en caso de que el usuario antiguo
-     * no tenga todavía una fila en gamification.
-     */
-    await client.query(
-      `INSERT INTO gamification (
-        user_id,
-        points,
-        level
-      )
-      VALUES ($1, 0, 1)
-      ON CONFLICT (user_id)
-      DO NOTHING`,
-      [req.user.id]
-    );
-
-    let progressResult;
-
-    if (shouldAwardPoints) {
-      progressResult = await client.query(
-        `UPDATE gamification
-         SET points = points + $1,
-             level = FLOOR((points + $1) / 100) + 1,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE user_id = $2
-         RETURNING
-           points,
-           level,
-           updated_at`,
-        [ACTIVITY_POINTS, req.user.id]
-      );
-
-      await unlockActivityAchievement(
+    const gamificationResult =
+      await applyGamificationEvent(
         client,
-        req.user.id
+        {
+          userId: req.user.id,
+          eventType: "ACTIVITY_COMPLETED",
+          awardPoints: shouldAwardPoints
+        }
       );
-
-      await unlockLevelAchievement(
-        client,
-        req.user.id,
-        progressResult.rows[0].level
-      );
-    } else {
-      progressResult = await client.query(
-        `SELECT
-          points,
-          level,
-          updated_at
-         FROM gamification
-         WHERE user_id = $1`,
-        [req.user.id]
-      );
-    }
 
     await client.query("COMMIT");
 
@@ -334,16 +278,29 @@ export async function saveActivityResponse(req, res) {
       message: shouldAwardPoints
         ? "Actividad completada y progreso actualizado correctamente"
         : "Actividad completada nuevamente; el progreso no se duplicó",
-      activity_response: responseResult.rows[0],
-      points_added: shouldAwardPoints
-        ? ACTIVITY_POINTS
-        : 0,
-      already_rewarded: alreadyRewarded,
-      progress: progressResult.rows[0]
+
+      activity_response:
+        responseResult.rows[0],
+
+      points_added:
+        gamificationResult.points_added,
+
+      already_rewarded:
+        alreadyRewarded,
+
+      progress:
+        gamificationResult.progress
     });
   } catch (error) {
     if (client) {
-      await client.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        console.error(
+          "Error al revertir la transacción:",
+          rollbackError
+        );
+      }
     }
 
     console.error(
@@ -361,7 +318,6 @@ export async function saveActivityResponse(req, res) {
 
 /**
  * GET /api/activities/completed
- * Consulta el historial de respuestas del usuario autenticado.
  */
 export async function getUserActivities(req, res) {
   try {
@@ -373,6 +329,7 @@ export async function getUserActivities(req, res) {
         ua.observation,
         ua.points_awarded,
         ua.completed_at,
+
         a.id AS activity_id,
         a.title,
         a.description,
@@ -380,10 +337,14 @@ export async function getUserActivities(req, res) {
         a.instructions,
         a.estimated_duration,
         a.status AS activity_catalog_status
+
        FROM user_activities ua
+
        INNER JOIN activities a
          ON ua.activity_id = a.id
+
        WHERE ua.user_id = $1
+
        ORDER BY
         ua.completed_at DESC,
         ua.id DESC`,
@@ -395,8 +356,11 @@ export async function getUserActivities(req, res) {
         result.rows.length > 0
           ? "Historial de actividades obtenido correctamente"
           : "El usuario todavía no ha completado actividades",
+
       total: result.rows.length,
-      activity_responses: result.rows
+
+      activity_responses:
+        result.rows
     });
   } catch (error) {
     console.error(
@@ -408,57 +372,4 @@ export async function getUserActivities(req, res) {
       message: "Error al obtener respuestas de actividades"
     });
   }
-}
-
-/**
- * Desbloquea el logro de la primera actividad.
- */
-async function unlockActivityAchievement(
-  client,
-  userId
-) {
-  await client.query(
-    `INSERT INTO user_achievements (
-      user_id,
-      achievement_id
-    )
-    SELECT $1, id
-    FROM achievements
-    WHERE code = 'FIRST_ACTIVITY'
-    ON CONFLICT (
-      user_id,
-      achievement_id
-    )
-    DO NOTHING`,
-    [userId]
-  );
-}
-
-/**
- * Desbloquea el logro de nivel 2 cuando corresponda.
- */
-async function unlockLevelAchievement(
-  client,
-  userId,
-  level
-) {
-  if (Number(level) < 2) {
-    return;
-  }
-
-  await client.query(
-    `INSERT INTO user_achievements (
-      user_id,
-      achievement_id
-    )
-    SELECT $1, id
-    FROM achievements
-    WHERE code = 'LEVEL_TWO'
-    ON CONFLICT (
-      user_id,
-      achievement_id
-    )
-    DO NOTHING`,
-    [userId]
-  );
 }

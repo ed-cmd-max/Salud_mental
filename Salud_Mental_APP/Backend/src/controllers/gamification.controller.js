@@ -1,161 +1,157 @@
 import { pool } from "../config/db.js";
 
+/**
+ * GET /api/gamification/progress
+ */
 export async function getProgress(req, res) {
   try {
+    await pool.query(
+      `INSERT INTO gamification (
+        user_id,
+        points,
+        level,
+        activities_completed,
+        streak_days
+      )
+      VALUES ($1, 0, 1, 0, 0)
+      ON CONFLICT (user_id)
+      DO NOTHING`,
+      [req.user.id]
+    );
+
     const result = await pool.query(
-      `SELECT points, level, updated_at
+      `SELECT
+        points,
+        level,
+        activities_completed,
+        streak_days,
+        last_activity_date,
+        updated_at
        FROM gamification
        WHERE user_id = $1`,
       [req.user.id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Progreso no encontrado"
-      });
-    }
+    const progress = result.rows[0];
 
-    res.json({
-      progress: result.rows[0]
+    const points = Number(progress.points);
+    const level = Number(progress.level);
+
+    const currentLevelStart =
+      (level - 1) * 100;
+
+    const nextLevelPoints =
+      level * 100;
+
+    const pointsInCurrentLevel =
+      points - currentLevelStart;
+
+    const pointsToNextLevel =
+      Math.max(nextLevelPoints - points, 0);
+
+    const progressPercentage =
+      Math.min(
+        Math.round(
+          (pointsInCurrentLevel / 100) * 100
+        ),
+        100
+      );
+
+    return res.json({
+      progress: {
+        ...progress,
+        points_in_current_level:
+          pointsInCurrentLevel,
+
+        points_to_next_level:
+          pointsToNextLevel,
+
+        next_level_points:
+          nextLevelPoints,
+
+        progress_percentage:
+          progressPercentage
+      }
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Error al obtener progreso",
-      error: error.message
+    console.error(
+      "Error al obtener progreso:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al obtener progreso"
     });
   }
 }
 
-export async function updateProgress(req, res) {
-  try {
-    const { points, level, points_to_add } = req.body;
-
-    const currentProgress = await pool.query(
-      `SELECT points, level
-       FROM gamification
-       WHERE user_id = $1`,
-      [req.user.id]
-    );
-
-    if (currentProgress.rows.length === 0) {
-      return res.status(404).json({
-        message: "Progreso no encontrado"
-      });
-    }
-
-    const current = currentProgress.rows[0];
-
-    const hasDirectPoints = points !== undefined;
-    const hasPointsToAdd = points_to_add !== undefined;
-    const hasDirectLevel = level !== undefined;
-
-    if (!hasDirectPoints && !hasPointsToAdd && !hasDirectLevel) {
-      return res.status(400).json({
-        message: "Debe enviar points, points_to_add o level para actualizar el progreso"
-      });
-    }
-
-    let newPoints = Number(current.points);
-
-    if (hasDirectPoints) {
-      newPoints = Number(points);
-    }
-
-    if (hasPointsToAdd) {
-      newPoints += Number(points_to_add);
-    }
-
-    if (Number.isNaN(newPoints) || newPoints < 0) {
-      return res.status(400).json({
-        message: "Los puntos deben ser un número mayor o igual a 0"
-      });
-    }
-
-    let newLevel = hasDirectLevel
-      ? Number(level)
-      : Math.floor(newPoints / 100) + 1;
-
-    if (Number.isNaN(newLevel) || newLevel < 1) {
-      return res.status(400).json({
-        message: "El nivel debe ser un número mayor o igual a 1"
-      });
-    }
-
-    const result = await pool.query(
-      `UPDATE gamification
-       SET points = $1,
-           level = $2,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = $3
-       RETURNING points, level, updated_at`,
-      [newPoints, newLevel, req.user.id]
-    );
-
-    await unlockLevelAchievement(req.user.id, newLevel);
-
-    res.json({
-      message: "Progreso actualizado correctamente",
-      progress: result.rows[0]
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Error al actualizar progreso",
-      error: error.message
-    });
-  }
-}
-
+/**
+ * GET /api/gamification/achievements
+ */
 export async function getAchievements(req, res) {
   try {
     const result = await pool.query(
-      `SELECT a.id, a.code, a.title, a.description,
-              CASE
-                WHEN ua.id IS NULL THEN false
-                ELSE true
-              END AS unlocked,
-              ua.unlocked_at
+      `SELECT
+        a.id,
+        a.code,
+        a.title,
+        a.description,
+
+        CASE
+          WHEN ua.id IS NULL THEN FALSE
+          ELSE TRUE
+        END AS unlocked,
+
+        ua.unlocked_at
+
        FROM achievements a
+
        LEFT JOIN user_achievements ua
-       ON a.id = ua.achievement_id AND ua.user_id = $1
-       ORDER BY a.id ASC`,
+         ON a.id = ua.achievement_id
+        AND ua.user_id = $1
+
+       ORDER BY
+        unlocked DESC,
+        a.id ASC`,
       [req.user.id]
     );
 
-    res.json({
+    const unlockedCount =
+      result.rows.filter(
+        (achievement) => achievement.unlocked
+      ).length;
+
+    return res.json({
+      total: result.rows.length,
+      unlocked_count: unlockedCount,
+      pending_count:
+        result.rows.length - unlockedCount,
       achievements: result.rows
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Error al obtener logros",
-      error: error.message
+    console.error(
+      "Error al obtener logros:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al obtener logros"
     });
   }
 }
 
-async function unlockLevelAchievement(userId, level) {
-  if (level < 2) return;
-
-  const achievement = await pool.query(
-    "SELECT id FROM achievements WHERE code = $1",
-    ["LEVEL_TWO"]
-  );
-
-  if (achievement.rows.length === 0) return;
-
-  const achievementId = achievement.rows[0].id;
-
-  const exists = await pool.query(
-    `SELECT id
-     FROM user_achievements
-     WHERE user_id = $1 AND achievement_id = $2`,
-    [userId, achievementId]
-  );
-
-  if (exists.rows.length === 0) {
-    await pool.query(
-      `INSERT INTO user_achievements (user_id, achievement_id)
-       VALUES ($1, $2)`,
-      [userId, achievementId]
-    );
-  }
+/**
+ * PATCH /api/gamification/progress
+ *
+ * El frontend no puede cambiar puntos, nivel,
+ * racha ni actividades completadas.
+ */
+export function rejectManualProgressUpdate(
+  req,
+  res
+) {
+  return res.status(405).json({
+    message:
+      "El progreso se actualiza automáticamente mediante las acciones realizadas en la aplicación"
+  });
 }
