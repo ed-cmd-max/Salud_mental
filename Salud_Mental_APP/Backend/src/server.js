@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes.js";
 import emotionRoutes from "./routes/emotion.routes.js";
 import activityRoutes from "./routes/activity.routes.js";
 import gamificationRoutes from "./routes/gamification.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/emotions", emotionRoutes);
 app.use("/api/activities", activityRoutes);
 app.use("/api/gamification", gamificationRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
