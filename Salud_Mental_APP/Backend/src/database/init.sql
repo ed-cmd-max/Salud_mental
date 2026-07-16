@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS activities (
 CREATE INDEX IF NOT EXISTS idx_activities_status
 ON activities (status);
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_activities_title_lower
+ON activities (LOWER(TRIM(title)));
+
 CREATE TABLE IF NOT EXISTS user_activities (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
