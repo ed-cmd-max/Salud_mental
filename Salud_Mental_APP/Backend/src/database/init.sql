@@ -106,10 +106,49 @@ ON gamification (last_activity_date);
 
 CREATE TABLE IF NOT EXISTS achievements (
     id SERIAL PRIMARY KEY,
-    code VARCHAR(50) UNIQUE NOT NULL,
+
+    code VARCHAR(50) NOT NULL,
+
     title VARCHAR(150) NOT NULL,
-    description TEXT NOT NULL
+
+    description TEXT NOT NULL,
+
+    criterion_type VARCHAR(30) NOT NULL
+        CHECK (
+            criterion_type IN (
+                'emotion_count',
+                'activity_count',
+                'level',
+                'streak_days',
+                'points'
+            )
+        ),
+
+    criterion_value INTEGER NOT NULL
+        CHECK (criterion_value >= 1),
+
+    points_required INTEGER NOT NULL DEFAULT 0
+        CHECK (points_required >= 0),
+
+    status VARCHAR(20) NOT NULL DEFAULT 'active'
+        CHECK (
+            status IN (
+                'active',
+                'inactive'
+            )
+        ),
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_achievements_code_lower
+ON achievements (LOWER(TRIM(code)));
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_achievements_title_lower
+ON achievements (LOWER(TRIM(title)));
+
+CREATE INDEX IF NOT EXISTS idx_achievements_status
+ON achievements (status);
 
 CREATE TABLE IF NOT EXISTS user_achievements (
     id SERIAL PRIMARY KEY,
@@ -186,10 +225,27 @@ WHERE NOT EXISTS (
     WHERE title = 'Diario emocional'
 );
 
-INSERT INTO achievements (code, title, description)
-SELECT 'FIRST_EMOTION', 'Primera emoción registrada', 'Se desbloquea al registrar el primer estado emocional.'
+INSERT INTO achievements (
+    code,
+    title,
+    description,
+    criterion_type,
+    criterion_value,
+    points_required,
+    status
+)
+SELECT
+    'FIRST_EMOTION',
+    'Primera emoción registrada',
+    'Se desbloquea al registrar el primer estado emocional.',
+    'emotion_count',
+    1,
+    0,
+    'active'
 WHERE NOT EXISTS (
-    SELECT 1 FROM achievements WHERE code = 'FIRST_EMOTION'
+    SELECT 1
+    FROM achievements
+    WHERE code = 'FIRST_EMOTION'
 );
 
 INSERT INTO achievements (code, title, description)

@@ -855,3 +855,716 @@ export async function updateActivityStatus(req, res) {
     });
   }
 }
+const ALLOWED_CRITERION_TYPES = [
+  "emotion_count",
+  "activity_count",
+  "level",
+  "streak_days",
+  "points"
+];
+
+function getAchievementField(
+  body,
+  englishName,
+  spanishName
+) {
+  return (
+    body[englishName] ??
+    body[spanishName]
+  );
+}
+
+function prepareAchievementData(
+  body,
+  currentAchievement = null
+) {
+  const rawCode =
+    getAchievementField(
+      body,
+      "code",
+      "codigo"
+    );
+
+  const rawTitle =
+    getAchievementField(
+      body,
+      "title",
+      "nombre_logro"
+    );
+
+  const rawDescription =
+    getAchievementField(
+      body,
+      "description",
+      "descripcion"
+    );
+
+  const rawCriterionType =
+    getAchievementField(
+      body,
+      "criterion_type",
+      "tipo_criterio"
+    );
+
+  const rawCriterionValue =
+    getAchievementField(
+      body,
+      "criterion_value",
+      "valor_criterio"
+    );
+
+  const rawPointsRequired =
+    getAchievementField(
+      body,
+      "points_required",
+      "puntos_requeridos"
+    );
+
+  const rawStatus =
+    getAchievementField(
+      body,
+      "status",
+      "estado"
+    );
+
+  const code = String(
+    rawCode ??
+    currentAchievement?.code ??
+    ""
+  )
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+
+  const title = String(
+    rawTitle ??
+    currentAchievement?.title ??
+    ""
+  ).trim();
+
+  const description = String(
+    rawDescription ??
+    currentAchievement?.description ??
+    ""
+  ).trim();
+
+  const criterionType = String(
+    rawCriterionType ??
+    currentAchievement?.criterion_type ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+
+  let criterionValue = Number(
+    rawCriterionValue ??
+    currentAchievement?.criterion_value
+  );
+
+  let pointsRequired = Number(
+    rawPointsRequired ??
+    currentAchievement?.points_required ??
+    0
+  );
+
+  const status = String(
+    rawStatus ??
+    currentAchievement?.status ??
+    "active"
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!code) {
+    return {
+      error:
+        "El código del logro es obligatorio"
+    };
+  }
+
+  if (
+    !/^[A-Z][A-Z0-9_]{2,49}$/.test(code)
+  ) {
+    return {
+      error:
+        "El código debe tener entre 3 y 50 caracteres, iniciar con una letra y contener únicamente letras mayúsculas, números o guion bajo"
+    };
+  }
+
+  if (!title) {
+    return {
+      error:
+        "El nombre del logro es obligatorio"
+    };
+  }
+
+  if (title.length > 150) {
+    return {
+      error:
+        "El nombre del logro no puede superar los 150 caracteres"
+    };
+  }
+
+  if (!description) {
+    return {
+      error:
+        "La descripción del logro es obligatoria"
+    };
+  }
+
+  if (
+    !ALLOWED_CRITERION_TYPES.includes(
+      criterionType
+    )
+  ) {
+    return {
+      error:
+        "El tipo de criterio debe ser emotion_count, activity_count, level, streak_days o points"
+    };
+  }
+
+  /*
+   * Para logros basados en puntos se permite enviar
+   * points_required sin criterion_value.
+   */
+  if (
+    criterionType === "points" &&
+    (
+      rawCriterionValue === undefined ||
+      rawCriterionValue === null
+    ) &&
+    pointsRequired > 0
+  ) {
+    criterionValue = pointsRequired;
+  }
+
+  if (
+    !Number.isInteger(criterionValue) ||
+    criterionValue < 1 ||
+    criterionValue > 1000000
+  ) {
+    return {
+      error:
+        "El valor del criterio debe ser un número entero entre 1 y 1000000"
+    };
+  }
+
+  if (
+    !Number.isInteger(pointsRequired) ||
+    pointsRequired < 0 ||
+    pointsRequired > 1000000
+  ) {
+    return {
+      error:
+        "Los puntos requeridos deben ser un número entero entre 0 y 1000000"
+    };
+  }
+
+  if (
+    criterionType === "points" &&
+    pointsRequired === 0
+  ) {
+    pointsRequired = criterionValue;
+  }
+
+  if (
+    !["active", "inactive"].includes(
+      status
+    )
+  ) {
+    return {
+      error:
+        "El estado del logro debe ser active o inactive"
+    };
+  }
+
+  return {
+    data: {
+      code,
+      title,
+      description,
+      criterionType,
+      criterionValue,
+      pointsRequired,
+      status
+    }
+  };
+}
+
+/**
+ * GET /api/admin/achievements
+ */
+export async function getAdminAchievements(
+  req,
+  res
+) {
+  try {
+    const result = await pool.query(
+      `SELECT
+        a.id,
+        a.code,
+        a.title,
+        a.description,
+        a.criterion_type,
+        a.criterion_value,
+        a.points_required,
+        a.status,
+        a.created_at,
+        COUNT(ua.id)::INTEGER
+          AS unlocked_users
+
+       FROM achievements a
+
+       LEFT JOIN user_achievements ua
+         ON ua.achievement_id = a.id
+
+       GROUP BY
+        a.id,
+        a.code,
+        a.title,
+        a.description,
+        a.criterion_type,
+        a.criterion_value,
+        a.points_required,
+        a.status,
+        a.created_at
+
+       ORDER BY
+        a.created_at DESC,
+        a.id DESC`
+    );
+
+    const activeCount =
+      result.rows.filter(
+        (achievement) =>
+          achievement.status === "active"
+      ).length;
+
+    return res.json({
+      message:
+        result.rows.length > 0
+          ? "Logros obtenidos correctamente"
+          : "No existen logros registrados",
+
+      total:
+        result.rows.length,
+
+      active_count:
+        activeCount,
+
+      inactive_count:
+        result.rows.length -
+        activeCount,
+
+      achievements:
+        result.rows
+    });
+  } catch (error) {
+    console.error(
+      "Error al consultar logros administrativos:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Error al consultar logros"
+    });
+  }
+}
+
+/**
+ * POST /api/admin/achievements
+ */
+export async function createAdminAchievement(
+  req,
+  res
+) {
+  try {
+    const validation =
+      prepareAchievementData(req.body);
+
+    if (validation.error) {
+      return res.status(400).json({
+        message: validation.error
+      });
+    }
+
+    const {
+      code,
+      title,
+      description,
+      criterionType,
+      criterionValue,
+      pointsRequired,
+      status
+    } = validation.data;
+
+    const duplicateResult =
+      await pool.query(
+        `SELECT id
+         FROM achievements
+         WHERE
+           LOWER(TRIM(code)) =
+             LOWER(TRIM($1))
+           OR
+           LOWER(TRIM(title)) =
+             LOWER(TRIM($2))`,
+        [code, title]
+      );
+
+    if (
+      duplicateResult.rows.length > 0
+    ) {
+      return res.status(409).json({
+        message:
+          "Ya existe un logro con ese código o nombre"
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO achievements (
+        code,
+        title,
+        description,
+        criterion_type,
+        criterion_value,
+        points_required,
+        status
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7
+      )
+      RETURNING
+        id,
+        code,
+        title,
+        description,
+        criterion_type,
+        criterion_value,
+        points_required,
+        status,
+        created_at`,
+      [
+        code,
+        title,
+        description,
+        criterionType,
+        criterionValue,
+        pointsRequired,
+        status
+      ]
+    );
+
+    return res.status(201).json({
+      message:
+        "Logro creado correctamente",
+
+      achievement:
+        result.rows[0]
+    });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({
+        message:
+          "Ya existe un logro con ese código o nombre"
+      });
+    }
+
+    console.error(
+      "Error al crear logro:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Error al crear el logro"
+    });
+  }
+}
+
+/**
+ * PUT /api/admin/achievements/:id
+ */
+export async function updateAdminAchievement(
+  req,
+  res
+) {
+  try {
+    const achievementId =
+      parsePositiveId(req.params.id);
+
+    if (!achievementId) {
+      return res.status(400).json({
+        message:
+          "El identificador del logro no es válido"
+      });
+    }
+
+    if (
+      Object.keys(req.body).length === 0
+    ) {
+      return res.status(400).json({
+        message:
+          "Debe enviar al menos un campo para actualizar"
+      });
+    }
+
+    const currentResult =
+      await pool.query(
+        `SELECT
+          id,
+          code,
+          title,
+          description,
+          criterion_type,
+          criterion_value,
+          points_required,
+          status,
+          created_at
+         FROM achievements
+         WHERE id = $1`,
+        [achievementId]
+      );
+
+    if (
+      currentResult.rows.length === 0
+    ) {
+      return res.status(404).json({
+        message: "Logro no encontrado"
+      });
+    }
+
+    const currentAchievement =
+      currentResult.rows[0];
+
+    const validation =
+      prepareAchievementData(
+        req.body,
+        currentAchievement
+      );
+
+    if (validation.error) {
+      return res.status(400).json({
+        message: validation.error
+      });
+    }
+
+    const {
+      code,
+      title,
+      description,
+      criterionType,
+      criterionValue,
+      pointsRequired,
+      status
+    } = validation.data;
+
+    const duplicateResult =
+      await pool.query(
+        `SELECT id
+         FROM achievements
+         WHERE (
+           LOWER(TRIM(code)) =
+             LOWER(TRIM($1))
+           OR
+           LOWER(TRIM(title)) =
+             LOWER(TRIM($2))
+         )
+         AND id <> $3`,
+        [
+          code,
+          title,
+          achievementId
+        ]
+      );
+
+    if (
+      duplicateResult.rows.length > 0
+    ) {
+      return res.status(409).json({
+        message:
+          "Ya existe otro logro con ese código o nombre"
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE achievements
+       SET
+        code = $1,
+        title = $2,
+        description = $3,
+        criterion_type = $4,
+        criterion_value = $5,
+        points_required = $6,
+        status = $7
+       WHERE id = $8
+       RETURNING
+        id,
+        code,
+        title,
+        description,
+        criterion_type,
+        criterion_value,
+        points_required,
+        status,
+        created_at`,
+      [
+        code,
+        title,
+        description,
+        criterionType,
+        criterionValue,
+        pointsRequired,
+        status,
+        achievementId
+      ]
+    );
+
+    return res.json({
+      message:
+        "Logro actualizado correctamente",
+
+      achievement:
+        result.rows[0]
+    });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({
+        message:
+          "Ya existe otro logro con ese código o nombre"
+      });
+    }
+
+    console.error(
+      "Error al actualizar logro:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Error al actualizar el logro"
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/achievements/:id/status
+ */
+export async function updateAchievementStatus(
+  req,
+  res
+) {
+  try {
+    const achievementId =
+      parsePositiveId(req.params.id);
+
+    if (!achievementId) {
+      return res.status(400).json({
+        message:
+          "El identificador del logro no es válido"
+      });
+    }
+
+    const status = String(
+      req.body.status ??
+      req.body.estado ??
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (
+      !["active", "inactive"].includes(
+        status
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "El estado del logro debe ser active o inactive"
+      });
+    }
+
+    const currentResult =
+      await pool.query(
+        `SELECT
+          id,
+          code,
+          title,
+          description,
+          criterion_type,
+          criterion_value,
+          points_required,
+          status,
+          created_at
+         FROM achievements
+         WHERE id = $1`,
+        [achievementId]
+      );
+
+    if (
+      currentResult.rows.length === 0
+    ) {
+      return res.status(404).json({
+        message: "Logro no encontrado"
+      });
+    }
+
+    const currentAchievement =
+      currentResult.rows[0];
+
+    if (
+      currentAchievement.status === status
+    ) {
+      return res.json({
+        message:
+          "El logro ya posee el estado solicitado",
+
+        achievement:
+          currentAchievement
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE achievements
+       SET status = $1
+       WHERE id = $2
+       RETURNING
+        id,
+        code,
+        title,
+        description,
+        criterion_type,
+        criterion_value,
+        points_required,
+        status,
+        created_at`,
+      [status, achievementId]
+    );
+
+    return res.json({
+      message:
+        status === "active"
+          ? "Logro activado correctamente"
+          : "Logro desactivado correctamente",
+
+      achievement:
+        result.rows[0]
+    });
+  } catch (error) {
+    console.error(
+      "Error al cambiar estado del logro:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Error al cambiar el estado del logro"
+    });
+  }
+}
