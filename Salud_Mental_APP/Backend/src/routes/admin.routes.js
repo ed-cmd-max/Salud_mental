@@ -9,11 +9,19 @@ import {
   getUsers,
   updateUserStatus,
   updateUserRole,
+
   getAdminActivities,
   createAdminActivity,
   updateAdminActivity,
-  updateActivityStatus
+  updateActivityStatus,
+
+  getAdminAchievements,
+  createAdminAchievement,
+  updateAdminAchievement,
+  updateAchievementStatus
 } from "../controllers/admin.controller.js";
+  
+
 
 const router = Router();
 
@@ -61,4 +69,25 @@ router.patch(
   updateActivityStatus
 );
 
+/* Logros de gamificación */
+
+router.get(
+  "/achievements",
+  getAdminAchievements
+);
+
+router.post(
+  "/achievements",
+  createAdminAchievement
+);
+
+router.put(
+  "/achievements/:id",
+  updateAdminAchievement
+);
+
+router.patch(
+  "/achievements/:id/status",
+  updateAchievementStatus
+);
 export default router;
