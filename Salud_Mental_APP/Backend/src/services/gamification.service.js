@@ -111,10 +111,8 @@ export async function applyGamificationEvent(
   await evaluateAchievements(
     db,
     userId,
-    eventType,
     progress
   );
-
   return {
     points_added: pointsAdded,
     progress
@@ -124,93 +122,100 @@ export async function applyGamificationEvent(
 async function evaluateAchievements(
   db,
   userId,
-  eventType,
   progress
 ) {
-  if (eventType === "EMOTION_REGISTERED") {
-    const emotionCountResult = await db.query(
-      `SELECT COUNT(*)::INTEGER AS total
-       FROM emotions
-       WHERE user_id = $1`,
-      [userId]
+  const emotionResult = await db.query(
+    `SELECT COUNT(*)::INTEGER AS total
+     FROM emotions
+     WHERE user_id = $1`,
+    [userId]
+  );
+
+  const metrics = {
+    emotion_count:
+      Number(emotionResult.rows[0].total),
+
+    activity_count:
+      Number(progress.activities_completed),
+
+    level:
+      Number(progress.level),
+
+    streak_days:
+      Number(progress.streak_days),
+
+    points:
+      Number(progress.points)
+  };
+
+  const achievementsResult = await db.query(
+    `SELECT
+      id,
+      code,
+      criterion_type,
+      criterion_value,
+      points_required
+     FROM achievements
+     WHERE status = 'active'
+     ORDER BY id ASC`
+  );
+
+  for (const achievement of achievementsResult.rows) {
+    const unlocked = criterionIsMet(
+      achievement,
+      metrics
     );
 
-    const totalEmotions =
-      emotionCountResult.rows[0].total;
-
-    if (totalEmotions >= 1) {
+    if (unlocked) {
       await unlockAchievement(
         db,
         userId,
-        "FIRST_EMOTION"
-      );
-    }
-
-    if (totalEmotions >= 5) {
-      await unlockAchievement(
-        db,
-        userId,
-        "FIVE_EMOTIONS"
+        achievement.id
       );
     }
   }
+}
+
+function criterionIsMet(
+  achievement,
+  metrics
+) {
+  const type = achievement.criterion_type;
+
+  let requiredValue =
+    Number(achievement.criterion_value);
 
   if (
-    eventType === "ACTIVITY_COMPLETED" &&
-    Number(progress.activities_completed) >= 1
+    type === "points" &&
+    Number(achievement.points_required) > 0
   ) {
-    await unlockAchievement(
-      db,
-      userId,
-      "FIRST_ACTIVITY"
-    );
+    requiredValue =
+      Number(achievement.points_required);
   }
 
-  if (Number(progress.activities_completed) >= 3) {
-    await unlockAchievement(
-      db,
-      userId,
-      "THREE_ACTIVITIES"
-    );
-  }
+  const currentValue = Number(
+    metrics[type] ?? 0
+  );
 
-  if (Number(progress.level) >= 2) {
-    await unlockAchievement(
-      db,
-      userId,
-      "LEVEL_TWO"
-    );
-  }
-
-  if (Number(progress.streak_days) >= 3) {
-    await unlockAchievement(
-      db,
-      userId,
-      "THREE_DAY_STREAK"
-    );
-  }
+  return currentValue >= requiredValue;
 }
 
 async function unlockAchievement(
   db,
   userId,
-  code
+  achievementId
 ) {
   await db.query(
     `INSERT INTO user_achievements (
       user_id,
       achievement_id
     )
-    SELECT
-      $1,
-      id
-    FROM achievements
-    WHERE code = $2
+    VALUES ($1, $2)
     ON CONFLICT (
       user_id,
       achievement_id
     )
     DO NOTHING`,
-    [userId, code]
+    [userId, achievementId]
   );
 }
