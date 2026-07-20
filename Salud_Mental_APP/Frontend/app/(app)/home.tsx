@@ -212,12 +212,22 @@ export default function HomeScreen() {
         <ModuleCard
           title="Gamificación"
           description="Revisa puntos, nivel, racha y logros desbloqueados."
+          onPress={() => {
+            router.push(
+              "/(app)/gamification"
+            );
+          }}
         />
 
         {user?.role === "admin" ? (
           <ModuleCard
             title="Administración"
             description="Gestiona usuarios, actividades terapéuticas y logros."
+            onPress={() => {
+              router.push(
+                "/(app)/admin"
+              );
+            }}
           />
         ) : null}
 
