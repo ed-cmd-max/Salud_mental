@@ -202,6 +202,11 @@ export default function HomeScreen() {
         <ModuleCard
           title="Actividades terapéuticas"
           description="Realiza ejercicios guiados y conserva tus respuestas."
+          onPress={() => {
+            router.push(
+              "/(app)/activities"
+            );
+          }}
         />
 
         <ModuleCard
