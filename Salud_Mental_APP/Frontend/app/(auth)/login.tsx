@@ -45,31 +45,35 @@ export default function LoginScreen() {
     useState<string | null>(null);
 
   async function handleLogin() {
-    setErrorMessage(null);
+  setErrorMessage(null);
 
-    if (!email.trim() || !password) {
-      setErrorMessage(
-        "Debe completar el correo y la contraseña"
-      );
-      return;
-    }
-
-    try {
-      await signIn(
-        email,
-        password
-      );
-
-      router.replace("/(app)/home");
-    } catch (error) {
-      setErrorMessage(
-        getApiErrorMessage(
-          error,
-          "No fue posible iniciar sesión"
-        )
-      );
-    }
+  if (!email.trim() || !password) {
+    setErrorMessage(
+      "Debe completar el correo y la contraseña"
+    );
+    return;
   }
+
+  try {
+    const authenticatedUser = await signIn(
+      email,
+      password
+    );
+
+    router.replace(
+      authenticatedUser.role === "admin"
+        ? "/(app)/admin"
+        : "/(app)/home"
+    );
+  } catch (error) {
+    setErrorMessage(
+      getApiErrorMessage(
+        error,
+        "No fue posible iniciar sesión"
+      )
+    );
+  }
+}
 
   return (
     <SafeAreaView style={styles.safeArea}>
