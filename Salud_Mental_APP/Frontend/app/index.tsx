@@ -32,9 +32,11 @@ export default function IndexScreen() {
   return (
     <Redirect
       href={
-        user
-          ? "/(app)/home"
-          : "/(auth)/login"
+        !user
+          ? "/(auth)/login"
+          : user.role === "admin"
+            ? "/(app)/admin"
+            : "/(app)/home"
       }
     />
   );
