@@ -42,7 +42,25 @@ export default function ProtectedLayout() {
         headerShown: false,
         animation: "slide_from_right"
       }}
-    />
+    >
+      <Stack.Protected
+        guard={user.role === "user"}
+      >
+        <Stack.Screen name="home" />
+        <Stack.Screen name="emotion-register" />
+        <Stack.Screen name="emotion-history" />
+        <Stack.Screen name="activities" />
+        <Stack.Screen name="activity-detail/[id]" />
+        <Stack.Screen name="completed-activities" />
+        <Stack.Screen name="gamification" />
+      </Stack.Protected>
+
+      <Stack.Protected
+        guard={user.role === "admin"}
+      >
+        <Stack.Screen name="admin" />
+      </Stack.Protected>
+    </Stack>
   );
 }
 
