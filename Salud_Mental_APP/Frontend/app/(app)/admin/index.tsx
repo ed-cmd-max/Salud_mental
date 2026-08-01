@@ -83,9 +83,16 @@ function AdminModule({
 export default function AdminDashboardScreen() {
   const router = useRouter();
 
-  const {
-    user
-  } = useAuth();
+ const {
+  user,
+  signOut
+} = useAuth();
+
+async function handleSignOut() {
+  await signOut();
+
+  router.replace("/(auth)/login");
+}
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -94,14 +101,16 @@ export default function AdminDashboardScreen() {
           styles.scrollContent
         }
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backText}>
-            ‹ Volver
-          </Text>
-        </Pressable>
+      <Pressable
+  onPress={() => {
+    void handleSignOut();
+  }}
+  style={styles.backButton}
+>
+  <Text style={styles.backText}>
+    Cerrar sesión
+  </Text>
+</Pressable>
 
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
