@@ -1,7 +1,8 @@
 import { Router } from "express";
 
 import {
-  verifyToken
+  verifyToken,
+  requireUser
 } from "../middleware/auth.middleware.js";
 
 import {
@@ -12,33 +13,23 @@ import {
 
 const router = Router();
 
-/*
- * GET /api/gamification/progress
- * Consulta puntos, nivel, racha y actividades.
- */
+router.use(
+  verifyToken,
+  requireUser
+);
+
 router.get(
   "/progress",
-  verifyToken,
   getProgress
 );
 
-/*
- * PATCH /api/gamification/progress
- * Bloquea modificaciones manuales.
- */
 router.patch(
   "/progress",
-  verifyToken,
   rejectManualProgressUpdate
 );
 
-/*
- * GET /api/gamification/achievements
- * Consulta el catálogo de logros.
- */
 router.get(
   "/achievements",
-  verifyToken,
   getAchievements
 );
 
