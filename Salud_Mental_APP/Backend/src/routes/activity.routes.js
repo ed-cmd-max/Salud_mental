@@ -1,13 +1,30 @@
 import { Router } from "express";
-import { verifyToken } from "../middleware/auth.middleware.js";
 
-import { getActivities, getActivityById, saveActivityResponse, getUserActivities } from "../controllers/activity.controller.js";
+import {
+  verifyToken,
+  requireUser
+} from "../middleware/auth.middleware.js";
+
+import {
+  getActivities,
+  getActivityById,
+  saveActivityResponse,
+  getUserActivities
+} from "../controllers/activity.controller.js";
 
 const router = Router();
 
-router.get("/", verifyToken, getActivities);
-router.get("/completed", verifyToken, getUserActivities);
-router.get("/:id", verifyToken, getActivityById);
-router.post("/:id/responses", verifyToken, saveActivityResponse);
+router.use(
+  verifyToken,
+  requireUser
+);
+
+router.get("/", getActivities);
+router.get("/completed", getUserActivities);
+router.get("/:id", getActivityById);
+router.post(
+  "/:id/responses",
+  saveActivityResponse
+);
 
 export default router;
