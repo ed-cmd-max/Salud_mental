@@ -49,10 +49,9 @@ interface AuthContextValue {
   isSubmitting: boolean;
 
   signIn: (
-    email: string,
-    password: string
-  ) => Promise<void>;
-
+  email: string,
+  password: string
+) => Promise<AuthUser>;
   signUp: (
     name: string,
     email: string,
@@ -93,26 +92,28 @@ export function AuthProvider({
    * de carga. Se reutiliza en login y registro.
    */
   const authenticate = useCallback(
-    async (
-      email: string,
-      password: string
-    ): Promise<void> => {
-      const response =
-        await api.post<LoginResponse>(
-          "/auth/login",
-          {
-            email: email.trim().toLowerCase(),
-            password
-          }
-        );
+  async (
+    email: string,
+    password: string
+  ): Promise<AuthUser> => {
+    const response =
+      await api.post<LoginResponse>(
+        "/auth/login",
+        {
+          email: email.trim().toLowerCase(),
+          password
+        }
+      );
 
-      await saveToken(response.data.token);
+    await saveToken(response.data.token);
 
-      setToken(response.data.token);
-      setUser(response.data.user);
-    },
-    []
-  );
+    setToken(response.data.token);
+    setUser(response.data.user);
+
+    return response.data.user;
+  },
+  []
+);
 
   /**
    * Recupera la sesión al abrir la aplicación.
@@ -152,24 +153,24 @@ export function AuthProvider({
     void loadStoredSession();
   }, [loadStoredSession]);
 
-  const signIn = useCallback(
-    async (
-      email: string,
-      password: string
-    ): Promise<void> => {
-      setIsSubmitting(true);
+const signIn = useCallback(
+  async (
+    email: string,
+    password: string
+  ): Promise<AuthUser> => {
+    setIsSubmitting(true);
 
-      try {
-        await authenticate(
-          email,
-          password
-        );
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [authenticate]
-  );
+    try {
+      return await authenticate(
+        email,
+        password
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  },
+  [authenticate]
+);
 
   /**
    * Registra la cuenta y después inicia sesión
