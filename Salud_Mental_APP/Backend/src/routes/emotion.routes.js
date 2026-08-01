@@ -1,5 +1,9 @@
 import { Router } from "express";
-import { verifyToken } from "../middleware/auth.middleware.js";
+
+import {
+  verifyToken,
+  requireUser
+} from "../middleware/auth.middleware.js";
 
 import {
   createEmotion,
@@ -11,10 +15,15 @@ import {
 
 const router = Router();
 
-router.post("/", verifyToken, createEmotion);
-router.get("/", verifyToken, getEmotions);
-router.get("/history", verifyToken, getEmotionHistory);
-router.get("/stats", verifyToken, getEmotionStats);
-router.delete("/:id", verifyToken, deleteEmotion);
+router.use(
+  verifyToken,
+  requireUser
+);
+
+router.post("/", createEmotion);
+router.get("/", getEmotions);
+router.get("/history", getEmotionHistory);
+router.get("/stats", getEmotionStats);
+router.delete("/:id", deleteEmotion);
 
 export default router;
