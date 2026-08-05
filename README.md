@@ -1,2 +1,0 @@
-# Salud_mental
-Titulación
