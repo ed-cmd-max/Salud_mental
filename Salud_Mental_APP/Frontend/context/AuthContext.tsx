@@ -8,7 +8,14 @@ import React, {
   useState
 } from "react";
 
-import { api } from "../services/api";
+import {
+  Alert
+} from "react-native";
+
+import {
+  api,
+  setUnauthorizedHandler
+} from "../services/api";
 
 import {
   getToken,
@@ -16,7 +23,9 @@ import {
   saveToken
 } from "../services/tokenStorage";
 
-export type UserRole = "user" | "admin";
+export type UserRole =
+  | "user"
+  | "admin";
 
 export type AccountStatus =
   | "active"
@@ -45,13 +54,15 @@ interface MeResponse {
 interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
+
   isLoading: boolean;
   isSubmitting: boolean;
 
   signIn: (
-  email: string,
-  password: string
-) => Promise<AuthUser>;
+    email: string,
+    password: string
+  ) => Promise<AuthUser>;
+
   signUp: (
     name: string,
     email: string,
@@ -60,7 +71,8 @@ interface AuthContextValue {
 
   signOut: () => Promise<void>;
 
-  refreshSession: () => Promise<void>;
+  refreshSession:
+    () => Promise<void>;
 }
 
 interface AuthProviderProps {
@@ -68,166 +80,253 @@ interface AuthProviderProps {
 }
 
 const AuthContext =
-  createContext<AuthContextValue | undefined>(
-    undefined
-  );
+  createContext<
+    AuthContextValue | undefined
+  >(undefined);
 
 export function AuthProvider({
   children
 }: AuthProviderProps) {
-  const [user, setUser] =
-    useState<AuthUser | null>(null);
+  const [
+    user,
+    setUser
+  ] = useState<AuthUser | null>(
+    null
+  );
 
-  const [token, setToken] =
-    useState<string | null>(null);
+  const [
+    token,
+    setToken
+  ] = useState<string | null>(
+    null
+  );
 
-  const [isLoading, setIsLoading] =
-    useState(true);
+  const [
+    isLoading,
+    setIsLoading
+  ] = useState(true);
 
-  const [isSubmitting, setIsSubmitting] =
-    useState(false);
-
-  /**
-   * Inicia sesión sin controlar el indicador
-   * de carga. Se reutiliza en login y registro.
-   */
-  const authenticate = useCallback(
-  async (
-    email: string,
-    password: string
-  ): Promise<AuthUser> => {
-    const response =
-      await api.post<LoginResponse>(
-        "/auth/login",
-        {
-          email: email.trim().toLowerCase(),
-          password
-        }
-      );
-
-    await saveToken(response.data.token);
-
-    setToken(response.data.token);
-    setUser(response.data.user);
-
-    return response.data.user;
-  },
-  []
-);
+  const [
+    isSubmitting,
+    setIsSubmitting
+  ] = useState(false);
 
   /**
-   * Recupera la sesión al abrir la aplicación.
+   * Elimina la sesión cuando el servidor
+   * informa que el JWT ya no es válido.
    */
-  const loadStoredSession =
-    useCallback(async (): Promise<void> => {
-      setIsLoading(true);
-
-      try {
-        const storedToken =
-          await getToken();
-
-        if (!storedToken) {
-          setToken(null);
-          setUser(null);
-          return;
-        }
-
-        const response =
-          await api.get<MeResponse>(
-            "/auth/me"
-          );
-
-        setToken(storedToken);
-        setUser(response.data.user);
-      } catch (error) {
+  const invalidateSession =
+    useCallback(
+      async (): Promise<void> => {
         await removeToken();
 
         setToken(null);
         setUser(null);
-      } finally {
-        setIsLoading(false);
-      }
-    }, []);
+
+        Alert.alert(
+          "Sesión expirada",
+          "Tu sesión ha expirado. Inicia sesión nuevamente.",
+          [
+            {
+              text: "Aceptar"
+            }
+          ]
+        );
+      },
+      []
+    );
+
+  /**
+   * Registra el manejador global de
+   * respuestas HTTP 401.
+   */
+  useEffect(() => {
+    setUnauthorizedHandler(
+      invalidateSession
+    );
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, [invalidateSession]);
+
+  /**
+   * Inicia sesión y guarda el JWT.
+   */
+  const authenticate =
+    useCallback(
+      async (
+        email: string,
+        password: string
+      ): Promise<AuthUser> => {
+        const response =
+          await api.post<LoginResponse>(
+            "/auth/login",
+            {
+              email:
+                email
+                  .trim()
+                  .toLowerCase(),
+
+              password
+            }
+          );
+
+        await saveToken(
+          response.data.token
+        );
+
+        setToken(
+          response.data.token
+        );
+
+        setUser(
+          response.data.user
+        );
+
+        return response.data.user;
+      },
+      []
+    );
+
+  /**
+   * Recupera una sesión guardada cuando
+   * la aplicación inicia.
+   */
+  const loadStoredSession =
+    useCallback(
+      async (): Promise<void> => {
+        setIsLoading(true);
+
+        try {
+          const storedToken =
+            await getToken();
+
+          if (!storedToken) {
+            setToken(null);
+            setUser(null);
+
+            return;
+          }
+
+          const response =
+            await api.get<MeResponse>(
+              "/auth/me"
+            );
+
+          setToken(storedToken);
+
+          setUser(
+            response.data.user
+          );
+        } catch {
+          await removeToken();
+
+          setToken(null);
+          setUser(null);
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      []
+    );
 
   useEffect(() => {
     void loadStoredSession();
   }, [loadStoredSession]);
 
-const signIn = useCallback(
-  async (
-    email: string,
-    password: string
-  ): Promise<AuthUser> => {
-    setIsSubmitting(true);
+  const signIn =
+    useCallback(
+      async (
+        email: string,
+        password: string
+      ): Promise<AuthUser> => {
+        setIsSubmitting(true);
 
-    try {
-      return await authenticate(
-        email,
-        password
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  },
-  [authenticate]
-);
-
-  /**
-   * Registra la cuenta y después inicia sesión
-   * automáticamente para obtener el JWT.
-   */
-  const signUp = useCallback(
-    async (
-      name: string,
-      email: string,
-      password: string
-    ): Promise<void> => {
-      setIsSubmitting(true);
-
-      try {
-        const normalizedEmail =
-          email.trim().toLowerCase();
-
-        await api.post(
-          "/auth/register",
-          {
-            name: name.trim(),
-            email: normalizedEmail,
+        try {
+          return await authenticate(
+            email,
             password
-          }
-        );
-
-        await authenticate(
-          normalizedEmail,
-          password
-        );
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [authenticate]
-  );
-
-  const signOut =
-    useCallback(async (): Promise<void> => {
-      await removeToken();
-
-      setToken(null);
-      setUser(null);
-    }, []);
+          );
+        } finally {
+          setIsSubmitting(false);
+        }
+      },
+      [authenticate]
+    );
 
   /**
-   * Vuelve a consultar GET /api/auth/me.
+   * Registra la cuenta y después inicia
+   * sesión automáticamente.
+   */
+  const signUp =
+    useCallback(
+      async (
+        name: string,
+        email: string,
+        password: string
+      ): Promise<void> => {
+        setIsSubmitting(true);
+
+        try {
+          const normalizedEmail =
+            email
+              .trim()
+              .toLowerCase();
+
+          await api.post(
+            "/auth/register",
+            {
+              name: name.trim(),
+              email:
+                normalizedEmail,
+              password
+            }
+          );
+
+          await authenticate(
+            normalizedEmail,
+            password
+          );
+        } finally {
+          setIsSubmitting(false);
+        }
+      },
+      [authenticate]
+    );
+
+  /**
+   * Cierre de sesión voluntario.
+   */
+  const signOut =
+    useCallback(
+      async (): Promise<void> => {
+        await removeToken();
+
+        setToken(null);
+        setUser(null);
+      },
+      []
+    );
+
+  /**
+   * Vuelve a consultar los datos de la
+   * sesión actual.
    */
   const refreshSession =
-    useCallback(async (): Promise<void> => {
-      const response =
-        await api.get<MeResponse>(
-          "/auth/me"
-        );
+    useCallback(
+      async (): Promise<void> => {
+        const response =
+          await api.get<MeResponse>(
+            "/auth/me"
+          );
 
-      setUser(response.data.user);
-    }, []);
+        setUser(
+          response.data.user
+        );
+      },
+      []
+    );
 
   const contextValue =
     useMemo<AuthContextValue>(
@@ -262,7 +361,8 @@ const signIn = useCallback(
   );
 }
 
-export function useAuth(): AuthContextValue {
+export function useAuth():
+  AuthContextValue {
   const context =
     useContext(AuthContext);
 
