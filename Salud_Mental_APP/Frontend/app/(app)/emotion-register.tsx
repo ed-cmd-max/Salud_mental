@@ -1,9 +1,19 @@
+import {
+  displayDateToIso,
+  formatDateInput,
+  getTodayDisplayDate,
+  getTodayIsoDate
+} from "../../utils/date";
+
 import React, {
+  useEffect,
+  useRef,
   useState
 } from "react";
 
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -68,51 +78,26 @@ const EMOTIONS: EmotionOption[] = [
   }
 ];
 
-const DATE_REGEX =
-  /^\d{4}-\d{2}-\d{2}$/;
-
-function getTodayDate(): string {
-  const today = new Date();
-
-  const year = today.getFullYear();
-
-  const month = String(
-    today.getMonth() + 1
-  ).padStart(2, "0");
-
-  const day = String(
-    today.getDate()
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function isValidDate(
-  value: string
-): boolean {
-  if (!DATE_REGEX.test(value)) {
-    return false;
+function getIntensityDescription(
+  value: number
+): string {
+  if (value <= 2) {
+    return "Muy baja";
   }
 
-  const [
-    year,
-    month,
-    day
-  ] = value
-    .split("-")
-    .map(Number);
+  if (value <= 4) {
+    return "Baja";
+  }
 
-  const date = new Date(
-    year,
-    month - 1,
-    day
-  );
+  if (value <= 6) {
+    return "Media";
+  }
 
-  return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day
-  );
+  if (value <= 8) {
+    return "Alta";
+  }
+
+  return "Muy alta";
 }
 
 export default function EmotionRegisterScreen() {
@@ -136,7 +121,9 @@ export default function EmotionRegisterScreen() {
   const [
     recordDate,
     setRecordDate
-  ] = useState(getTodayDate());
+  ] = useState(
+    getTodayDisplayDate()
+  );
 
   const [
     isSubmitting,
@@ -146,7 +133,9 @@ export default function EmotionRegisterScreen() {
   const [
     errorMessage,
     setErrorMessage
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     successResult,
@@ -155,6 +144,48 @@ export default function EmotionRegisterScreen() {
     useState<CreateEmotionResponse | null>(
       null
     );
+
+  const successOpacity =
+    useRef(
+      new Animated.Value(0)
+    ).current;
+
+  const successTranslateY =
+    useRef(
+      new Animated.Value(8)
+    ).current;
+
+  useEffect(() => {
+    if (!successResult) {
+      successOpacity.setValue(0);
+      successTranslateY.setValue(8);
+      return;
+    }
+
+    Animated.parallel([
+      Animated.timing(
+        successOpacity,
+        {
+          toValue: 1,
+          duration: 260,
+          useNativeDriver: true
+        }
+      ),
+
+      Animated.timing(
+        successTranslateY,
+        {
+          toValue: 0,
+          duration: 260,
+          useNativeDriver: true
+        }
+      )
+    ]).start();
+  }, [
+    successResult,
+    successOpacity,
+    successTranslateY
+  ]);
 
   async function handleSubmit() {
     setErrorMessage(null);
@@ -168,17 +199,20 @@ export default function EmotionRegisterScreen() {
     }
 
     const normalizedDate =
-      recordDate.trim();
+      displayDateToIso(
+        recordDate.trim()
+      );
 
-    if (!isValidDate(normalizedDate)) {
+    if (!normalizedDate) {
       setErrorMessage(
-        "La fecha debe tener el formato YYYY-MM-DD y ser válida"
+        "Ingresa una fecha válida en formato DD/MM/AAAA"
       );
       return;
     }
 
     if (
-      normalizedDate > getTodayDate()
+      normalizedDate >
+      getTodayIsoDate()
     ) {
       setErrorMessage(
         "La fecha del registro no puede ser futura"
@@ -190,7 +224,8 @@ export default function EmotionRegisterScreen() {
       description.trim();
 
     if (
-      normalizedDescription.length > 500
+      normalizedDescription.length >
+      500
     ) {
       setErrorMessage(
         "La descripción no puede superar los 500 caracteres"
@@ -203,7 +238,8 @@ export default function EmotionRegisterScreen() {
     try {
       const result =
         await createEmotion({
-          emotion: selectedEmotion,
+          emotion:
+            selectedEmotion,
           intensity,
           description:
             normalizedDescription ||
@@ -217,7 +253,9 @@ export default function EmotionRegisterScreen() {
       setSelectedEmotion(null);
       setIntensity(5);
       setDescription("");
-      setRecordDate(getTodayDate());
+      setRecordDate(
+        getTodayDisplayDate()
+      );
     } catch (error) {
       setErrorMessage(
         getApiErrorMessage(
@@ -231,7 +269,9 @@ export default function EmotionRegisterScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      style={styles.safeArea}
+    >
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={
@@ -245,13 +285,23 @@ export default function EmotionRegisterScreen() {
             styles.scrollContent
           }
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={
+            false
+          }
         >
           <Pressable
-            onPress={() => router.back()}
+            onPress={() =>
+              router.back()
+            }
             disabled={isSubmitting}
             style={styles.backButton}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
           >
-            <Text style={styles.backText}>
+            <Text
+              style={styles.backText}
+            >
               ‹ Volver
             </Text>
           </Pressable>
@@ -261,7 +311,9 @@ export default function EmotionRegisterScreen() {
               Registro emocional
             </Text>
 
-            <Text style={styles.subtitle}>
+            <Text
+              style={styles.subtitle}
+            >
               Identifica cómo te sientes y
               registra la intensidad de tu
               emoción.
@@ -269,13 +321,22 @@ export default function EmotionRegisterScreen() {
           </View>
 
           <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>
+            <Text
+              style={
+                styles.sectionTitle
+              }
+            >
               ¿Cómo te sientes?
             </Text>
 
-            <Text style={styles.sectionHelp}>
-              Selecciona la emoción que mejor
-              describa tu estado actual.
+            <Text
+              style={
+                styles.sectionHelp
+              }
+            >
+              Selecciona la emoción que
+              mejor describa tu estado
+              actual.
             </Text>
 
             <View
@@ -283,64 +344,99 @@ export default function EmotionRegisterScreen() {
                 styles.emotionsContainer
               }
             >
-              {EMOTIONS.map((emotion) => {
-                const isSelected =
-                  selectedEmotion ===
-                  emotion.name;
+              {EMOTIONS.map(
+                (emotion) => {
+                  const isSelected =
+                    selectedEmotion ===
+                    emotion.name;
 
-                return (
-                  <Pressable
-                    key={emotion.name}
-                    onPress={() => {
-                      setSelectedEmotion(
+                  return (
+                    <Pressable
+                      key={
                         emotion.name
-                      );
-
-                      setSuccessResult(null);
-                      setErrorMessage(null);
-                    }}
-                    disabled={isSubmitting}
-                    style={({ pressed }) => [
-                      styles.emotionButton,
-
-                      isSelected &&
-                        styles.emotionButtonSelected,
-
-                      pressed &&
-                        styles.buttonPressed
-                    ]}
-                  >
-                    <Text
-                      style={
-                        styles.emotionEmoji
                       }
-                    >
-                      {emotion.emoji}
-                    </Text>
+                      onPress={() => {
+                        setSelectedEmotion(
+                          emotion.name
+                        );
 
-                    <Text
-                      style={[
-                        styles.emotionName,
+                        setSuccessResult(
+                          null
+                        );
+
+                        setErrorMessage(
+                          null
+                        );
+                      }}
+                      disabled={
+                        isSubmitting
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Emoción ${emotion.name}`}
+                      accessibilityState={{
+                        selected:
+                          isSelected
+                      }}
+                      style={({
+                        pressed
+                      }) => [
+                        styles.emotionButton,
 
                         isSelected &&
-                          styles.emotionNameSelected
+                          styles.emotionButtonSelected,
+
+                        pressed &&
+                          styles.buttonPressed
                       ]}
                     >
-                      {emotion.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                      <Text
+                        style={
+                          styles.emotionEmoji
+                        }
+                      >
+                        {
+                          emotion.emoji
+                        }
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.emotionName,
+
+                          isSelected &&
+                            styles.emotionNameSelected
+                        ]}
+                      >
+                        {isSelected
+                          ? "✓ "
+                          : ""}
+                        {emotion.name}
+                      </Text>
+                    </Pressable>
+                  );
+                }
+              )}
             </View>
 
-            <View style={styles.divider} />
+            <View
+              style={styles.divider}
+            />
 
-            <Text style={styles.sectionTitle}>
+            <Text
+              style={
+                styles.sectionTitle
+              }
+            >
               Intensidad
             </Text>
 
-            <Text style={styles.sectionHelp}>
-              Selecciona un valor del 1 al 10.
+            <Text
+              style={
+                styles.sectionHelp
+              }
+            >
+              Selecciona un valor del 1 al
+              10.
             </Text>
 
             <View
@@ -352,7 +448,8 @@ export default function EmotionRegisterScreen() {
                 {
                   length: 10
                 },
-                (_, index) => index + 1
+                (_, index) =>
+                  index + 1
               ).map((value) => {
                 const isSelected =
                   intensity === value;
@@ -361,11 +458,30 @@ export default function EmotionRegisterScreen() {
                   <Pressable
                     key={value}
                     onPress={() => {
-                      setIntensity(value);
-                      setSuccessResult(null);
+                      setIntensity(
+                        value
+                      );
+
+                      setSuccessResult(
+                        null
+                      );
+
+                      setErrorMessage(
+                        null
+                      );
                     }}
-                    disabled={isSubmitting}
-                    style={({ pressed }) => [
+                    disabled={
+                      isSubmitting
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Intensidad ${value}`}
+                    accessibilityState={{
+                      selected:
+                        isSelected
+                    }}
+                    style={({
+                      pressed
+                    }) => [
                       styles.intensityButton,
 
                       isSelected &&
@@ -383,7 +499,9 @@ export default function EmotionRegisterScreen() {
                           styles.intensityTextSelected
                       ]}
                     >
-                      {value}
+                      {isSelected
+                        ? `✓ ${value}`
+                        : value}
                     </Text>
                   </Pressable>
                 );
@@ -412,53 +530,104 @@ export default function EmotionRegisterScreen() {
               </Text>
             </View>
 
-            <View style={styles.divider} />
+            <View
+              style={
+                styles.intensitySummary
+              }
+            >
+              <Text
+                style={
+                  styles.intensitySummaryText
+                }
+              >
+                {intensity}/10 · Intensidad{" "}
+                {getIntensityDescription(
+                  intensity
+                ).toLowerCase()}
+              </Text>
+            </View>
 
-            <Text style={styles.label}>
+            <View
+              style={styles.divider}
+            />
+
+            <Text
+              style={styles.label}
+            >
               Fecha del registro
             </Text>
 
             <TextInput
               value={recordDate}
               onChangeText={(value) => {
-                setRecordDate(value);
-                setSuccessResult(null);
-                setErrorMessage(null);
+                setRecordDate(
+                  formatDateInput(
+                    value
+                  )
+                );
+
+                setSuccessResult(
+                  null
+                );
+
+                setErrorMessage(
+                  null
+                );
               }}
               style={styles.input}
-              placeholder="YYYY-MM-DD"
+              placeholder="DD/MM/AAAA"
               placeholderTextColor="#87939A"
-              autoCapitalize="none"
-              autoCorrect={false}
+              keyboardType="numeric"
               maxLength={10}
-              editable={!isSubmitting}
+              editable={
+                !isSubmitting
+              }
+              accessibilityLabel="Fecha del registro"
             />
 
-            <Text style={styles.fieldHelp}>
-              Ejemplo: {getTodayDate()}
+            <Text
+              style={
+                styles.fieldHelp
+              }
+            >
+              Ejemplo:{" "}
+              {getTodayDisplayDate()}
             </Text>
 
-            <Text style={styles.label}>
+            <Text
+              style={styles.label}
+            >
               Descripción opcional
             </Text>
 
             <TextInput
               value={description}
               onChangeText={(value) => {
-                setDescription(value);
-                setSuccessResult(null);
-                setErrorMessage(null);
+                setDescription(
+                  value
+                );
+
+                setSuccessResult(
+                  null
+                );
+
+                setErrorMessage(
+                  null
+                );
               }}
               style={[
                 styles.input,
                 styles.descriptionInput
               ]}
-              placeholder="Describe brevemente qué ocurrió o por qué te sientes así..."
+              placeholder="Escribe brevemente qué ocurrió o cómo te sientes..."
               placeholderTextColor="#87939A"
               multiline
-              maxLength={500}
               textAlignVertical="top"
-              editable={!isSubmitting}
+              maxLength={500}
+              editable={
+                !isSubmitting
+              }
+              accessibilityLabel="Descripción opcional"
             />
 
             <Text
@@ -470,23 +639,50 @@ export default function EmotionRegisterScreen() {
             </Text>
 
             {errorMessage ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>
+              <View
+                style={
+                  styles.errorBox
+                }
+              >
+                <Text
+                  style={
+                    styles.errorText
+                  }
+                >
                   {errorMessage}
                 </Text>
               </View>
             ) : null}
 
             {successResult ? (
-              <View style={styles.successBox}>
+              <Animated.View
+                style={[
+                  styles.successBox,
+                  {
+                    opacity:
+                      successOpacity,
+
+                    transform: [
+                      {
+                        translateY:
+                          successTranslateY
+                      }
+                    ]
+                  }
+                ]}
+              >
                 <Text
-                  style={styles.successTitle}
+                  style={
+                    styles.successTitle
+                  }
                 >
-                  Registro guardado
+                  ✓ Registro guardado
                 </Text>
 
                 <Text
-                  style={styles.successText}
+                  style={
+                    styles.successText
+                  }
                 >
                   {
                     successResult.message
@@ -520,7 +716,11 @@ export default function EmotionRegisterScreen() {
                         styles.progressLabel
                       }
                     >
-                      puntos
+                      {successResult
+                        .points_added ===
+                      1
+                        ? "punto"
+                        : "puntos"}
                     </Text>
                   </View>
 
@@ -535,7 +735,8 @@ export default function EmotionRegisterScreen() {
                       }
                     >
                       {
-                        successResult.progress
+                        successResult
+                          .progress
                           .level
                       }
                     </Text>
@@ -560,7 +761,8 @@ export default function EmotionRegisterScreen() {
                       }
                     >
                       {
-                        successResult.progress
+                        successResult
+                          .progress
                           .streak_days
                       }
                     </Text>
@@ -570,19 +772,30 @@ export default function EmotionRegisterScreen() {
                         styles.progressLabel
                       }
                     >
-                      racha
+                      {successResult
+                        .progress
+                        .streak_days ===
+                      1
+                        ? "día de racha"
+                        : "días de racha"}
                     </Text>
                   </View>
                 </View>
-              </View>
+              </Animated.View>
             ) : null}
 
             <Pressable
               onPress={() => {
                 void handleSubmit();
               }}
-              disabled={isSubmitting}
-              style={({ pressed }) => [
+              disabled={
+                isSubmitting
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Guardar registro emocional"
+              style={({
+                pressed
+              }) => [
                 styles.submitButton,
 
                 pressed &&
@@ -593,9 +806,24 @@ export default function EmotionRegisterScreen() {
               ]}
             >
               {isSubmitting ? (
-                <ActivityIndicator
-                  color="#FFFFFF"
-                />
+                <View
+                  style={
+                    styles.submitLoadingContent
+                  }
+                >
+                  <ActivityIndicator
+                    size="small"
+                    color="#FFFFFF"
+                  />
+
+                  <Text
+                    style={
+                      styles.submitButtonText
+                    }
+                  >
+                    Guardando...
+                  </Text>
+                </View>
               ) : (
                 <Text
                   style={
@@ -608,7 +836,11 @@ export default function EmotionRegisterScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.informationBox}>
+          <View
+            style={
+              styles.informationBox
+            }
+          >
             <Text
               style={
                 styles.informationTitle
@@ -623,9 +855,10 @@ export default function EmotionRegisterScreen() {
               }
             >
               No existen emociones buenas o
-              malas. Registrarlas puede ayudarte
-              a reconocer patrones y comprender
-              mejor cómo te sientes.
+              malas. Registrarlas puede
+              ayudarte a reconocer patrones y
+              comprender mejor cómo te
+              sientes.
             </Text>
           </View>
         </ScrollView>
@@ -653,6 +886,7 @@ const styles = StyleSheet.create({
   backButton: {
     alignSelf: "flex-start",
     paddingVertical: 8,
+    paddingHorizontal: 4,
     marginBottom: 10
   },
 
@@ -761,8 +995,9 @@ const styles = StyleSheet.create({
   },
 
   intensityButton: {
-    width: 43,
-    height: 43,
+    minWidth: 44,
+    height: 44,
+    paddingHorizontal: 5,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -795,7 +1030,18 @@ const styles = StyleSheet.create({
 
   intensityLabel: {
     color: "#839097",
-    fontSize: 11
+    fontSize: 12
+  },
+
+  intensitySummary: {
+    alignItems: "center",
+    marginTop: 12
+  },
+
+  intensitySummaryText: {
+    color: "#526D82",
+    fontSize: 13,
+    fontWeight: "800"
   },
 
   label: {
@@ -825,13 +1071,13 @@ const styles = StyleSheet.create({
 
   fieldHelp: {
     color: "#87939A",
-    fontSize: 11,
+    fontSize: 12,
     marginBottom: 19
   },
 
   characterCounter: {
     color: "#87939A",
-    fontSize: 11,
+    fontSize: 12,
     textAlign: "right",
     marginBottom: 16
   },
@@ -888,8 +1134,9 @@ const styles = StyleSheet.create({
 
   progressLabel: {
     color: "#62806B",
-    fontSize: 11,
-    marginTop: 2
+    fontSize: 12,
+    marginTop: 2,
+    textAlign: "center"
   },
 
   submitButton: {
@@ -904,6 +1151,13 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "800"
+  },
+
+  submitLoadingContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8
   },
 
   buttonPressed: {
