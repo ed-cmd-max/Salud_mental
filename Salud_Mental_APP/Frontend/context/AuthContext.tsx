@@ -5,11 +5,16 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 
 import {
-  Alert
+  Alert,
+  AppState,
+  AppStateStatus,
+  Platform,
+  View
 } from "react-native";
 
 import {
@@ -18,8 +23,11 @@ import {
 } from "../services/api";
 
 import {
+  getLastActivity,
   getToken,
+  removeLastActivity,
   removeToken,
+  saveLastActivity,
   saveToken
 } from "../services/tokenStorage";
 
@@ -79,10 +87,61 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+/**
+ * Tiempo máximo sin actividad:
+ * 15 minutos.
+ */
+const INACTIVITY_LIMIT_MS =
+  15 * 60 * 1000;
+
+/**
+ * Cada 30 segundos comprobamos
+ * si la sesión superó el límite.
+ */
+const INACTIVITY_CHECK_MS =
+  30 * 1000;
+
+/**
+ * No es necesario escribir SecureStore
+ * en absolutamente cada toque.
+ */
+const ACTIVITY_SAVE_INTERVAL_MS =
+  60 * 1000;
+
 const AuthContext =
   createContext<
     AuthContextValue | undefined
   >(undefined);
+
+function showSessionMessage(
+  title: string,
+  message: string
+) {
+  if (
+    Platform.OS === "web"
+  ) {
+    if (
+      typeof window !==
+      "undefined"
+    ) {
+      window.alert(
+        `${title}\n\n${message}`
+      );
+    }
+
+    return;
+  }
+
+  Alert.alert(
+    title,
+    message,
+    [
+      {
+        text: "Aceptar"
+      }
+    ]
+  );
+}
 
 export function AuthProvider({
   children
@@ -111,34 +170,127 @@ export function AuthProvider({
     setIsSubmitting
   ] = useState(false);
 
+  const lastActivityRef =
+    useRef<number>(
+      Date.now()
+    );
+
+  const lastSavedActivityRef =
+    useRef<number>(
+      Date.now()
+    );
+
+  const appStateRef =
+    useRef<AppStateStatus>(
+      AppState.currentState
+    );
+
+  const inactivityHandledRef =
+    useRef(false);
+
   /**
-   * Elimina la sesión cuando el servidor
-   * informa que el JWT ya no es válido.
+   * Elimina por completo los datos
+   * locales de la sesión.
    */
-  const invalidateSession =
+  const clearLocalSession =
     useCallback(
       async (): Promise<void> => {
-        await removeToken();
+        await Promise.all([
+          removeToken(),
+          removeLastActivity()
+        ]);
 
         setToken(null);
         setUser(null);
-
-        Alert.alert(
-          "Sesión expirada",
-          "Tu sesión ha expirado. Inicia sesión nuevamente.",
-          [
-            {
-              text: "Aceptar"
-            }
-          ]
-        );
       },
       []
     );
 
   /**
-   * Registra el manejador global de
-   * respuestas HTTP 401.
+   * Registra que el usuario continúa
+   * utilizando la aplicación.
+   */
+  const registerActivity =
+    useCallback(() => {
+      if (!token) {
+        return;
+      }
+
+      const now =
+        Date.now();
+
+      lastActivityRef.current =
+        now;
+
+      /**
+       * Reducimos escrituras al
+       * almacenamiento seguro.
+       */
+      if (
+        now -
+          lastSavedActivityRef.current >=
+        ACTIVITY_SAVE_INTERVAL_MS
+      ) {
+        lastSavedActivityRef.current =
+          now;
+
+        void saveLastActivity(
+          now
+        );
+      }
+    }, [token]);
+
+  /**
+   * Cierra la sesión cuando se cumplen
+   * 15 minutos sin actividad.
+   */
+  const expireForInactivity =
+    useCallback(
+      async (): Promise<void> => {
+        if (
+          !token ||
+          inactivityHandledRef.current
+        ) {
+          return;
+        }
+
+        inactivityHandledRef.current =
+          true;
+
+        await clearLocalSession();
+
+        showSessionMessage(
+          "Sesión cerrada por inactividad",
+          "Por seguridad, tu sesión se cerró después de 15 minutos sin actividad. Inicia sesión nuevamente."
+        );
+      },
+      [
+        token,
+        clearLocalSession
+      ]
+    );
+
+  /**
+   * Elimina la sesión cuando el
+   * backend devuelve HTTP 401 porque
+   * el JWT ya no es válido o expiró.
+   */
+  const invalidateSession =
+    useCallback(
+      async (): Promise<void> => {
+        await clearLocalSession();
+
+        showSessionMessage(
+          "Sesión expirada",
+          "Tu sesión ha expirado. Inicia sesión nuevamente."
+        );
+      },
+      [clearLocalSession]
+    );
+
+  /**
+   * Registra el manejador global
+   * de respuestas HTTP 401.
    */
   useEffect(() => {
     setUnauthorizedHandler(
@@ -146,12 +298,15 @@ export function AuthProvider({
     );
 
     return () => {
-      setUnauthorizedHandler(null);
+      setUnauthorizedHandler(
+        null
+      );
     };
   }, [invalidateSession]);
 
   /**
-   * Inicia sesión y guarda el JWT.
+   * Inicia sesión y almacena el JWT
+   * junto con la hora de actividad.
    */
   const authenticate =
     useCallback(
@@ -172,9 +327,27 @@ export function AuthProvider({
             }
           );
 
-        await saveToken(
-          response.data.token
-        );
+        const now =
+          Date.now();
+
+        await Promise.all([
+          saveToken(
+            response.data.token
+          ),
+
+          saveLastActivity(
+            now
+          )
+        ]);
+
+        lastActivityRef.current =
+          now;
+
+        lastSavedActivityRef.current =
+          now;
+
+        inactivityHandledRef.current =
+          false;
 
         setToken(
           response.data.token
@@ -199,12 +372,48 @@ export function AuthProvider({
         setIsLoading(true);
 
         try {
-          const storedToken =
-            await getToken();
+          const [
+            storedToken,
+            storedLastActivity
+          ] =
+            await Promise.all([
+              getToken(),
+              getLastActivity()
+            ]);
 
           if (!storedToken) {
             setToken(null);
             setUser(null);
+
+            return;
+          }
+
+          const now =
+            Date.now();
+
+          /**
+           * Si al volver a abrir la app
+           * ya pasaron 15 minutos,
+           * la sesión no se restaura.
+           */
+          if (
+            storedLastActivity &&
+            now -
+              storedLastActivity >=
+              INACTIVITY_LIMIT_MS
+          ) {
+            await Promise.all([
+              removeToken(),
+              removeLastActivity()
+            ]);
+
+            setToken(null);
+            setUser(null);
+
+            showSessionMessage(
+              "Sesión cerrada por inactividad",
+              "Por seguridad, tu sesión se cerró después de 15 minutos sin actividad. Inicia sesión nuevamente."
+            );
 
             return;
           }
@@ -214,13 +423,35 @@ export function AuthProvider({
               "/auth/me"
             );
 
-          setToken(storedToken);
+          /**
+           * Abrir nuevamente la aplicación
+           * cuenta como actividad.
+           */
+          await saveLastActivity(
+            now
+          );
+
+          lastActivityRef.current =
+            now;
+
+          lastSavedActivityRef.current =
+            now;
+
+          inactivityHandledRef.current =
+            false;
+
+          setToken(
+            storedToken
+          );
 
           setUser(
             response.data.user
           );
         } catch {
-          await removeToken();
+          await Promise.all([
+            removeToken(),
+            removeLastActivity()
+          ]);
 
           setToken(null);
           setUser(null);
@@ -234,6 +465,135 @@ export function AuthProvider({
   useEffect(() => {
     void loadStoredSession();
   }, [loadStoredSession]);
+
+  /**
+   * Revisa periódicamente la actividad
+   * mientras la aplicación está abierta.
+   */
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const interval =
+      setInterval(() => {
+        const elapsed =
+          Date.now() -
+          lastActivityRef.current;
+
+        if (
+          elapsed >=
+          INACTIVITY_LIMIT_MS
+        ) {
+          void expireForInactivity();
+        }
+      }, INACTIVITY_CHECK_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [
+    token,
+    expireForInactivity
+  ]);
+
+  /**
+   * Controla cuando la aplicación pasa
+   * al segundo plano y cuando vuelve.
+   */
+  useEffect(() => {
+    const subscription =
+      AppState.addEventListener(
+        "change",
+        (
+          nextAppState
+        ) => {
+          const previousAppState =
+            appStateRef.current;
+
+          appStateRef.current =
+            nextAppState;
+
+          if (!token) {
+            return;
+          }
+
+          /**
+           * Al salir de la aplicación
+           * guardamos el momento exacto.
+           */
+          if (
+            nextAppState ===
+              "background" ||
+            nextAppState ===
+              "inactive"
+          ) {
+            const now =
+              Date.now();
+
+            lastActivityRef.current =
+              now;
+
+            lastSavedActivityRef.current =
+              now;
+
+            void saveLastActivity(
+              now
+            );
+
+            return;
+          }
+
+          /**
+           * Cuando vuelve al primer plano,
+           * comprobamos cuánto tiempo
+           * estuvo fuera.
+           */
+          if (
+            nextAppState ===
+              "active" &&
+            (
+              previousAppState ===
+                "background" ||
+              previousAppState ===
+                "inactive"
+            )
+          ) {
+            void (async () => {
+              const storedActivity =
+                await getLastActivity();
+
+              const lastActivity =
+                storedActivity ??
+                lastActivityRef.current;
+
+              const elapsed =
+                Date.now() -
+                lastActivity;
+
+              if (
+                elapsed >=
+                INACTIVITY_LIMIT_MS
+              ) {
+                await expireForInactivity();
+
+                return;
+              }
+
+              registerActivity();
+            })();
+          }
+        }
+      );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [
+    token,
+    expireForInactivity,
+    registerActivity
+  ]);
 
   const signIn =
     useCallback(
@@ -256,8 +616,8 @@ export function AuthProvider({
     );
 
   /**
-   * Registra la cuenta y después inicia
-   * sesión automáticamente.
+   * Registra la cuenta y posteriormente
+   * inicia sesión automáticamente.
    */
   const signUp =
     useCallback(
@@ -277,9 +637,12 @@ export function AuthProvider({
           await api.post(
             "/auth/register",
             {
-              name: name.trim(),
+              name:
+                name.trim(),
+
               email:
                 normalizedEmail,
+
               password
             }
           );
@@ -296,22 +659,22 @@ export function AuthProvider({
     );
 
   /**
-   * Cierre de sesión voluntario.
+   * Cierre voluntario de sesión.
    */
   const signOut =
     useCallback(
       async (): Promise<void> => {
-        await removeToken();
+        inactivityHandledRef.current =
+          true;
 
-        setToken(null);
-        setUser(null);
+        await clearLocalSession();
       },
-      []
+      [clearLocalSession]
     );
 
   /**
-   * Vuelve a consultar los datos de la
-   * sesión actual.
+   * Vuelve a consultar los datos de
+   * la sesión actual.
    */
   const refreshSession =
     useCallback(
@@ -324,8 +687,10 @@ export function AuthProvider({
         setUser(
           response.data.user
         );
+
+        registerActivity();
       },
-      []
+      [registerActivity]
     );
 
   const contextValue =
@@ -356,7 +721,16 @@ export function AuthProvider({
     <AuthContext.Provider
       value={contextValue}
     >
-      {children}
+      <View
+        style={{
+          flex: 1
+        }}
+        onTouchStart={
+          registerActivity
+        }
+      >
+        {children}
+      </View>
     </AuthContext.Provider>
   );
 }
