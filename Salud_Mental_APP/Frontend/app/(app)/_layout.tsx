@@ -24,7 +24,7 @@ export default function ProtectedLayout() {
       <View style={styles.loading}>
         <ActivityIndicator
           size="large"
-          color="#528252"
+          color="#526D82"
         />
       </View>
     );
@@ -47,12 +47,30 @@ export default function ProtectedLayout() {
         guard={user.role === "user"}
       >
         <Stack.Screen name="home" />
-        <Stack.Screen name="emotion-register" />
-        <Stack.Screen name="emotion-history" />
-        <Stack.Screen name="activities" />
-        <Stack.Screen name="activity-detail/[id]" />
-        <Stack.Screen name="completed-activities" />
-        <Stack.Screen name="gamification" />
+
+        <Stack.Screen
+          name="emotion-register"
+        />
+
+        <Stack.Screen
+          name="emotion-history"
+        />
+
+        <Stack.Screen
+          name="activities"
+        />
+
+        <Stack.Screen
+          name="activity-detail/[id]"
+        />
+
+        <Stack.Screen
+          name="completed-activities"
+        />
+
+        <Stack.Screen
+          name="gamification"
+        />
       </Stack.Protected>
 
       <Stack.Protected
