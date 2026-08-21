@@ -1,6 +1,10 @@
-import React from "react";
+import React, {
+  useState
+} from "react";
 
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -36,6 +40,11 @@ function AdminModule({
     <Pressable
       onPress={onPress}
       disabled={!enabled}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{
+        disabled: !enabled
+      }}
       style={({ pressed }) => [
         styles.moduleCard,
 
@@ -47,32 +56,48 @@ function AdminModule({
           styles.moduleCardDisabled
       ]}
     >
-      <View style={styles.moduleIcon}>
-        <Text style={styles.moduleEmoji}>
+      <View
+        style={styles.moduleIcon}
+      >
+        <Text
+          style={styles.moduleEmoji}
+        >
           {emoji}
         </Text>
       </View>
 
-      <View style={styles.moduleContent}>
-        <Text style={styles.moduleTitle}>
+      <View
+        style={styles.moduleContent}
+      >
+        <Text
+          style={styles.moduleTitle}
+        >
           {title}
         </Text>
 
         <Text
-          style={styles.moduleDescription}
+          style={
+            styles.moduleDescription
+          }
         >
           {description}
         </Text>
 
         {!enabled ? (
-          <Text style={styles.comingSoon}>
+          <Text
+            style={
+              styles.comingSoon
+            }
+          >
             Próximamente
           </Text>
         ) : null}
       </View>
 
       {enabled ? (
-        <Text style={styles.moduleArrow}>
+        <Text
+          style={styles.moduleArrow}
+        >
           ›
         </Text>
       ) : null}
@@ -83,80 +108,187 @@ function AdminModule({
 export default function AdminDashboardScreen() {
   const router = useRouter();
 
- const {
-  user,
-  signOut
-} = useAuth();
+  const {
+    user,
+    signOut
+  } = useAuth();
 
-async function handleSignOut() {
-  await signOut();
+  const [
+    isSigningOut,
+    setIsSigningOut
+  ] = useState(false);
 
-  router.replace("/(auth)/login");
-}
+  async function handleSignOut() {
+    setIsSigningOut(true);
+
+    try {
+      await signOut();
+
+      router.replace(
+        "/(auth)/login"
+      );
+    } finally {
+      setIsSigningOut(false);
+    }
+  }
+
+  function confirmSignOut() {
+    if (isSigningOut) {
+      return;
+    }
+
+    Alert.alert(
+      "¿Deseas cerrar sesión?",
+      "Tendrás que iniciar sesión nuevamente para continuar.",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel"
+        },
+        {
+          text: "Cerrar sesión",
+          style: "destructive",
+          onPress: () => {
+            void handleSignOut();
+          }
+        }
+      ]
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      style={styles.safeArea}
+    >
       <ScrollView
         contentContainerStyle={
           styles.scrollContent
         }
       >
-      <Pressable
-  onPress={() => {
-    void handleSignOut();
-  }}
-  style={styles.backButton}
->
-  <Text style={styles.backText}>
-    Cerrar sesión
-  </Text>
-</Pressable>
+        <Pressable
+          onPress={
+            confirmSignOut
+          }
+          disabled={
+            isSigningOut
+          }
+          style={
+            styles.backButton
+          }
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar sesión"
+        >
+          {isSigningOut ? (
+            <ActivityIndicator
+              size="small"
+              color="#526D82"
+            />
+          ) : (
+            <Text
+              style={
+                styles.backText
+              }
+            >
+              Cerrar sesión
+            </Text>
+          )}
+        </Pressable>
 
-        <View style={styles.header}>
-          <Text style={styles.eyebrow}>
+        <View
+          style={styles.header}
+        >
+          <Text
+            style={
+              styles.eyebrow
+            }
+          >
             PANEL ADMINISTRATIVO
           </Text>
 
-          <Text style={styles.title}>
+          <Text
+            style={styles.title}
+          >
             Administración
           </Text>
 
-          <Text style={styles.subtitle}>
+          <Text
+            style={styles.subtitle}
+          >
             Gestiona usuarios, actividades
-            terapéuticas y logros de la
+            de autocuidado y
+            autorreflexión, y logros de la
             aplicación.
           </Text>
         </View>
 
-        <View style={styles.adminCard}>
-          <View style={styles.adminIcon}>
-            <Text style={styles.adminEmoji}>
+        <View
+          style={styles.adminCard}
+        >
+          <View
+            style={
+              styles.adminIcon
+            }
+          >
+            <Text
+              style={
+                styles.adminEmoji
+              }
+            >
               🛡️
             </Text>
           </View>
 
-          <View style={styles.adminInfo}>
-            <Text style={styles.adminLabel}>
+          <View
+            style={
+              styles.adminInfo
+            }
+          >
+            <Text
+              style={
+                styles.adminLabel
+              }
+            >
               Sesión administrativa
             </Text>
 
-            <Text style={styles.adminName}>
+            <Text
+              style={
+                styles.adminName
+              }
+            >
               {user?.name}
             </Text>
 
-            <Text style={styles.adminEmail}>
+            <Text
+              style={
+                styles.adminEmail
+              }
+            >
               {user?.email}
             </Text>
           </View>
 
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>
+          <View
+            style={
+              styles.roleBadge
+            }
+          >
+            <Text
+              style={
+                styles.roleText
+              }
+            >
               ADMIN
             </Text>
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>
+        <Text
+          style={
+            styles.sectionTitle
+          }
+        >
           Módulos administrativos
         </Text>
 
@@ -174,7 +306,7 @@ async function handleSignOut() {
         <AdminModule
           emoji="🌿"
           title="Gestión de actividades"
-          description="Crea, edita, activa y desactiva actividades terapéuticas."
+          description="Crea, edita, activa y desactiva actividades de autocuidado y autorreflexión."
           onPress={() => {
             router.push(
               "/(app)/admin/activities"
@@ -193,16 +325,28 @@ async function handleSignOut() {
           }}
         />
 
-        <View style={styles.securityBox}>
-          <Text style={styles.securityTitle}>
+        <View
+          style={
+            styles.securityBox
+          }
+        >
+          <Text
+            style={
+              styles.securityTitle
+            }
+          >
             Seguridad administrativa
           </Text>
 
-          <Text style={styles.securityText}>
-            Todas las operaciones vuelven a ser
-            verificadas por el backend mediante
-            el JWT y el rol almacenado en la base
-            de datos.
+          <Text
+            style={
+              styles.securityText
+            }
+          >
+            Las operaciones administrativas
+            están protegidas y solo pueden ser
+            realizadas por usuarios con los
+            permisos correspondientes.
           </Text>
         </View>
       </ScrollView>
@@ -210,214 +354,228 @@ async function handleSignOut() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F2F6F7"
-  },
+const styles =
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor:
+        "#F2F6F7"
+    },
 
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 45
-  },
+    scrollContent: {
+      paddingHorizontal: 20,
+      paddingTop: 22,
+      paddingBottom: 45
+    },
 
-  backButton: {
-    alignSelf: "flex-start",
-    paddingVertical: 8,
-    marginBottom: 10
-  },
+    backButton: {
+      minHeight: 44,
+      alignSelf: "flex-start",
+      justifyContent:
+        "center",
+      paddingHorizontal: 4,
+      marginBottom: 10
+    },
 
-  backText: {
-    color: "#526D82",
-    fontSize: 16,
-    fontWeight: "700"
-  },
+    backText: {
+      color: "#526D82",
+      fontSize: 16,
+      fontWeight: "700"
+    },
 
-  header: {
-    marginBottom: 20
-  },
+    header: {
+      marginBottom: 20
+    },
 
-  eyebrow: {
-    color: "#7A6847",
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.3,
-    marginBottom: 7
-  },
+    eyebrow: {
+      color: "#7A6847",
+      fontSize: 12,
+      fontWeight: "900",
+      letterSpacing: 1.3,
+      marginBottom: 7
+    },
 
-  title: {
-    color: "#243642",
-    fontSize: 30,
-    fontWeight: "800",
-    marginBottom: 8
-  },
+    title: {
+      color: "#243642",
+      fontSize: 30,
+      fontWeight: "800",
+      marginBottom: 8
+    },
 
-  subtitle: {
-    color: "#60717A",
-    fontSize: 15,
-    lineHeight: 22
-  },
+    subtitle: {
+      color: "#60717A",
+      fontSize: 15,
+      lineHeight: 22
+    },
 
-  adminCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#526D82",
-    borderRadius: 22,
-    padding: 18,
-    marginBottom: 26
-  },
+    adminCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor:
+        "#526D82",
+      borderRadius: 22,
+      padding: 18,
+      marginBottom: 26
+    },
 
-  adminIcon: {
-    width: 53,
-    height: 53,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 17,
-    marginRight: 13
-  },
+    adminIcon: {
+      width: 53,
+      height: 53,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      backgroundColor:
+        "#FFFFFF",
+      borderRadius: 17,
+      marginRight: 13
+    },
 
-  adminEmoji: {
-    fontSize: 26
-  },
+    adminEmoji: {
+      fontSize: 26
+    },
 
-  adminInfo: {
-    flex: 1
-  },
+    adminInfo: {
+      flex: 1
+    },
 
-  adminLabel: {
-    color: "#DDE8EC",
-    fontSize: 10,
-    fontWeight: "700",
-    marginBottom: 3
-  },
+    adminLabel: {
+      color: "#DDE8EC",
+      fontSize: 12,
+      fontWeight: "700",
+      marginBottom: 3
+    },
 
-  adminName: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800"
-  },
+    adminName: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "800"
+    },
 
-  adminEmail: {
-    color: "#DCE7EC",
-    fontSize: 10,
-    marginTop: 3
-  },
+    adminEmail: {
+      color: "#DCE7EC",
+      fontSize: 12,
+      marginTop: 3
+    },
 
-  roleBadge: {
-    backgroundColor: "#E8DFCA",
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    marginLeft: 8
-  },
+    roleBadge: {
+      backgroundColor:
+        "#E8DFCA",
+      borderRadius: 14,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      marginLeft: 8
+    },
 
-  roleText: {
-    color: "#745F36",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1
-  },
+    roleText: {
+      color: "#745F36",
+      fontSize: 12,
+      fontWeight: "900",
+      letterSpacing: 1
+    },
 
-  sectionTitle: {
-    color: "#243642",
-    fontSize: 19,
-    fontWeight: "800",
-    marginBottom: 13
-  },
+    sectionTitle: {
+      color: "#243642",
+      fontSize: 19,
+      fontWeight: "800",
+      marginBottom: 13
+    },
 
-  moduleCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 19,
-    padding: 16,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: "#000000",
-    shadowOpacity: 0.05,
-    shadowRadius: 7,
-    shadowOffset: {
-      width: 0,
-      height: 3
-    }
-  },
-
-  moduleCardPressed: {
-    opacity: 0.82,
-    transform: [
-      {
-        scale: 0.99
+    moduleCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor:
+        "#FFFFFF",
+      borderRadius: 19,
+      padding: 16,
+      marginBottom: 12,
+      elevation: 2,
+      shadowColor:
+        "#000000",
+      shadowOpacity: 0.05,
+      shadowRadius: 7,
+      shadowOffset: {
+        width: 0,
+        height: 3
       }
-    ]
-  },
+    },
 
-  moduleCardDisabled: {
-    opacity: 0.58
-  },
+    moduleCardPressed: {
+      opacity: 0.82,
+      transform: [
+        {
+          scale: 0.99
+        }
+      ]
+    },
 
-  moduleIcon: {
-    width: 51,
-    height: 51,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#E7EFF2",
-    borderRadius: 16,
-    marginRight: 13
-  },
+    moduleCardDisabled: {
+      opacity: 0.58
+    },
 
-  moduleEmoji: {
-    fontSize: 25
-  },
+    moduleIcon: {
+      width: 51,
+      height: 51,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      backgroundColor:
+        "#E7EFF2",
+      borderRadius: 16,
+      marginRight: 13
+    },
 
-  moduleContent: {
-    flex: 1
-  },
+    moduleEmoji: {
+      fontSize: 25
+    },
 
-  moduleTitle: {
-    color: "#243642",
-    fontSize: 16,
-    fontWeight: "800",
-    marginBottom: 4
-  },
+    moduleContent: {
+      flex: 1
+    },
 
-  moduleDescription: {
-    color: "#68777F",
-    fontSize: 12,
-    lineHeight: 18
-  },
+    moduleTitle: {
+      color: "#243642",
+      fontSize: 16,
+      fontWeight: "800",
+      marginBottom: 4
+    },
 
-  moduleArrow: {
-    color: "#7C919B",
-    fontSize: 28,
-    marginLeft: 8
-  },
+    moduleDescription: {
+      color: "#68777F",
+      fontSize: 12,
+      lineHeight: 18
+    },
 
-  comingSoon: {
-    color: "#8A7750",
-    fontSize: 10,
-    fontWeight: "800",
-    marginTop: 6
-  },
+    moduleArrow: {
+      color: "#7C919B",
+      fontSize: 28,
+      marginLeft: 8
+    },
 
-  securityBox: {
-    backgroundColor: "#E6EEF1",
-    borderRadius: 18,
-    padding: 17,
-    marginTop: 12
-  },
+    comingSoon: {
+      color: "#8A7750",
+      fontSize: 12,
+      fontWeight: "800",
+      marginTop: 6
+    },
 
-  securityTitle: {
-    color: "#405A69",
-    fontSize: 14,
-    fontWeight: "800",
-    marginBottom: 5
-  },
+    securityBox: {
+      backgroundColor:
+        "#E6EEF1",
+      borderRadius: 18,
+      padding: 17,
+      marginTop: 12
+    },
 
-  securityText: {
-    color: "#5F737E",
-    fontSize: 12,
-    lineHeight: 18
-  }
-});
+    securityTitle: {
+      color: "#405A69",
+      fontSize: 14,
+      fontWeight: "800",
+      marginBottom: 5
+    },
+
+    securityText: {
+      color: "#5F737E",
+      fontSize: 12,
+      lineHeight: 18
+    }
+  });
