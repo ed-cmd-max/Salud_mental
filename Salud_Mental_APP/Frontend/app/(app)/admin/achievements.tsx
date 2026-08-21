@@ -355,6 +355,8 @@ export default function AdminAchievementsScreen() {
           onPress={() =>
             router.back()
           }
+          accessibilityRole="button"
+          accessibilityLabel="Volver"
           style={styles.backButton}
         >
           <Text style={styles.backText}>
@@ -762,10 +764,9 @@ export default function AdminAchievementsScreen() {
 
           <Text style={styles.noticeText}>
             El administrador define los
-            criterios. El backend revisa el
-            progreso de cada usuario y
-            desbloquea los logros cuando se
-            cumplen las condiciones.
+           criterios y los logros se
+           desbloquean automáticamente cuando
+           el usuario cumple las condiciones.
           </Text>
         </View>
       </ScrollView>
