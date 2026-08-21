@@ -326,6 +326,8 @@ export default function AdminUsersScreen() {
       >
         <Pressable
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Volver"
           style={styles.backButton}
         >
           <Text style={styles.backText}>
