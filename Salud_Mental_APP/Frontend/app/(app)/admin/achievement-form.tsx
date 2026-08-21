@@ -446,6 +446,8 @@ export default function AdminAchievementFormScreen() {
               router.back()
             }
             disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
             style={styles.backButton}
           >
             <Text
