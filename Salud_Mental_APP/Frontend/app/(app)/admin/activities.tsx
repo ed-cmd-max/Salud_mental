@@ -287,6 +287,8 @@ export default function AdminActivitiesScreen() {
           onPress={() =>
             router.back()
           }
+          accessibilityRole="button"
+          accessibilityLabel="Volver"
           style={styles.backButton}
         >
           <Text style={styles.backText}>
