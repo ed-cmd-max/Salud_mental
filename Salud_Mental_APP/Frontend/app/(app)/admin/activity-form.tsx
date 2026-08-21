@@ -350,6 +350,8 @@ export default function AdminActivityFormScreen() {
               router.back()
             }
             disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
             style={styles.backButton}
           >
             <Text
