@@ -1,3 +1,9 @@
+import {
+  displayDateToIso,
+  formatDateInput,
+  getTodayIsoDate
+} from "../../utils/date";
+
 import React, {
   useCallback,
   useEffect,
@@ -95,43 +101,12 @@ const PERIODS: PeriodOption[] = [
   }
 ];
 
-const DATE_REGEX =
-  /^\d{4}-\d{2}-\d{2}$/;
-
 const EMPTY_SUMMARY: EmotionSummary = {
   totalRecords: 0,
   averageIntensity: 0,
   predominantEmotion: null,
   distribution: []
 };
-
-function isValidDate(
-  value: string
-): boolean {
-  if (!DATE_REGEX.test(value)) {
-    return false;
-  }
-
-  const [
-    year,
-    month,
-    day
-  ] = value
-    .split("-")
-    .map(Number);
-
-  const date = new Date(
-    year,
-    month - 1,
-    day
-  );
-
-  return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day
-  );
-}
 
 function formatDate(
   value: string
@@ -220,10 +195,9 @@ export default function EmotionHistoryScreen() {
   const [
     selectedPeriod,
     setSelectedPeriod
-  ] =
-    useState<EmotionPeriod | null>(
-      null
-    );
+  ] = useState<EmotionPeriod | null>(
+    null
+  );
 
   const [
     startDate,
@@ -281,6 +255,13 @@ export default function EmotionHistoryScreen() {
     setErrorMessage
   ] = useState<string | null>(null);
 
+  const hasActiveFilters =
+    Object.keys(appliedFilters).length > 0;
+
+  const hasCustomDateRange =
+    startDate.trim() !== "" ||
+    endDate.trim() !== "";
+
   const loadData = useCallback(
     async (
       filters: EmotionHistoryFilters,
@@ -317,26 +298,23 @@ export default function EmotionHistoryScreen() {
         const historySummary =
           historyResult.value.summary;
 
-    if (
-    statsResult.status ===
-    "fulfilled" &&
-    (
-        statsResult.value.totalRecords > 0 ||
-        historySummary.totalRecords === 0
-    )
-    ) {
-    setSummary(
-        statsResult.value
-    );
-    } else {
-    /*
-    * Si el endpoint /stats devuelve cero,
-    * pero el historial tiene registros,
-    * se usa el resumen calculado desde
-    * los registros visibles.
-    */
-    setSummary(historySummary);
-    }
+        if (
+          statsResult.status ===
+            "fulfilled" &&
+          (
+            statsResult.value.totalRecords >
+              0 ||
+            historySummary.totalRecords === 0
+          )
+        ) {
+          setSummary(
+            statsResult.value
+          );
+        } else {
+          setSummary(
+            historySummary
+          );
+        }
       } catch (error) {
         setGroups([]);
         setSummary(EMPTY_SUMMARY);
@@ -369,14 +347,28 @@ export default function EmotionHistoryScreen() {
         selectedPeriod;
     }
 
-    if (startDate.trim()) {
+    const startIso =
+      startDate.trim()
+        ? displayDateToIso(
+            startDate.trim()
+          )
+        : null;
+
+    const endIso =
+      endDate.trim()
+        ? displayDateToIso(
+            endDate.trim()
+          )
+        : null;
+
+    if (startIso) {
       filters.fecha_inicio =
-        startDate.trim();
+        startIso;
     }
 
-    if (endDate.trim()) {
+    if (endIso) {
       filters.fecha_fin =
-        endDate.trim();
+        endIso;
     }
 
     if (selectedEmotion) {
@@ -403,30 +395,67 @@ export default function EmotionHistoryScreen() {
     const normalizedEnd =
       endDate.trim();
 
+    const startIso =
+      normalizedStart
+        ? displayDateToIso(
+            normalizedStart
+          )
+        : null;
+
+    const endIso =
+      normalizedEnd
+        ? displayDateToIso(
+            normalizedEnd
+          )
+        : null;
+
     if (
       normalizedStart &&
-      !isValidDate(normalizedStart)
+      !startIso
     ) {
       setErrorMessage(
-        "La fecha inicial debe tener el formato YYYY-MM-DD y ser válida"
+        "La fecha inicial debe tener el formato DD/MM/AAAA y ser válida"
       );
       return;
     }
 
     if (
       normalizedEnd &&
-      !isValidDate(normalizedEnd)
+      !endIso
     ) {
       setErrorMessage(
-        "La fecha final debe tener el formato YYYY-MM-DD y ser válida"
+        "La fecha final debe tener el formato DD/MM/AAAA y ser válida"
+      );
+      return;
+    }
+
+    const today =
+      getTodayIsoDate();
+
+    if (
+      startIso &&
+      startIso > today
+    ) {
+      setErrorMessage(
+        "La fecha inicial no puede ser futura"
       );
       return;
     }
 
     if (
-      normalizedStart &&
-      normalizedEnd &&
-      normalizedStart > normalizedEnd
+      endIso &&
+      endIso > today
+    ) {
+      setErrorMessage(
+        "La fecha final no puede ser futura"
+      );
+      return;
+    }
+
+    if (
+      startIso &&
+      endIso &&
+      startIso > endIso
     ) {
       setErrorMessage(
         "La fecha inicial no puede ser posterior a la fecha final"
@@ -434,7 +463,8 @@ export default function EmotionHistoryScreen() {
       return;
     }
 
-    const filters = buildFilters();
+    const filters =
+      buildFilters();
 
     setAppliedFilters(filters);
 
@@ -458,27 +488,47 @@ export default function EmotionHistoryScreen() {
   ) {
     setSelectedPeriod(period);
 
-    if (period) {
-      setStartDate("");
-      setEndDate("");
-    }
+    /*
+     * Al seleccionar cualquier periodo,
+     * incluido "Todos", eliminamos el
+     * rango personalizado para evitar
+     * mezclar ambos filtros.
+     */
+    setStartDate("");
+    setEndDate("");
+
+    setErrorMessage(null);
   }
 
   function handleDateChange(
     type: "start" | "end",
     value: string
   ) {
+    /*
+     * Al escribir un rango personalizado
+     * se desactiva Hoy/Semana/Mes.
+     */
     setSelectedPeriod(null);
+    setErrorMessage(null);
+
+    const formattedValue =
+      formatDateInput(value);
 
     if (type === "start") {
-      setStartDate(value);
+      setStartDate(
+        formattedValue
+      );
     } else {
-      setEndDate(value);
+      setEndDate(
+        formattedValue
+      );
     }
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      style={styles.safeArea}
+    >
       <ScrollView
         contentContainerStyle={
           styles.scrollContent
@@ -498,10 +548,17 @@ export default function EmotionHistoryScreen() {
         }
       >
         <Pressable
-          onPress={() => router.back()}
+          onPress={() =>
+            router.back()
+          }
+          accessibilityRole="button"
+          accessibilityLabel="Volver"
           style={styles.backButton}
+          hitSlop={10}
         >
-          <Text style={styles.backText}>
+          <Text
+            style={styles.backText}
+          >
             ‹ Volver
           </Text>
         </Pressable>
@@ -511,18 +568,26 @@ export default function EmotionHistoryScreen() {
             Historial emocional
           </Text>
 
-          <Text style={styles.subtitle}>
+          <Text
+            style={styles.subtitle}
+          >
             Revisa tus registros e identifica
             patrones en tus emociones.
           </Text>
         </View>
 
-        <View style={styles.filtersCard}>
-          <Text style={styles.cardTitle}>
+        <View
+          style={styles.filtersCard}
+        >
+          <Text
+            style={styles.cardTitle}
+          >
             Filtros
           </Text>
 
-          <Text style={styles.filterLabel}>
+          <Text
+            style={styles.filterLabel}
+          >
             Periodo
           </Text>
 
@@ -535,88 +600,138 @@ export default function EmotionHistoryScreen() {
               styles.horizontalOptions
             }
           >
-            {PERIODS.map((period) => {
-              const isSelected =
-                selectedPeriod ===
-                period.value;
+            {PERIODS.map(
+              (period) => {
+                /*
+                 * "Todos" solamente aparece
+                 * seleccionado si no existe
+                 * un rango personalizado.
+                 */
+                const isSelected =
+                  period.value === null
+                    ? selectedPeriod ===
+                        null &&
+                      !hasCustomDateRange
+                    : selectedPeriod ===
+                      period.value;
 
-              return (
-                <Pressable
-                  key={period.label}
-                  onPress={() => {
-                    handlePeriodSelection(
-                      period.value
-                    );
-                  }}
-                  style={[
-                    styles.periodButton,
-                    isSelected &&
-                      styles.optionSelected
-                  ]}
-                >
-                  <Text
+                return (
+                  <Pressable
+                    key={
+                      period.label
+                    }
+                    onPress={() => {
+                      handlePeriodSelection(
+                        period.value
+                      );
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      period.label
+                    }
+                    accessibilityState={{
+                      selected:
+                        isSelected
+                    }}
                     style={[
-                      styles.periodText,
+                      styles.periodButton,
+
                       isSelected &&
-                        styles.optionTextSelected
+                        styles.optionSelected
                     ]}
                   >
-                    {period.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    <Text
+                      style={[
+                        styles.periodText,
+
+                        isSelected &&
+                          styles.optionTextSelected
+                      ]}
+                    >
+                      {isSelected
+                        ? "✓ "
+                        : ""}
+                      {period.label}
+                    </Text>
+                  </Pressable>
+                );
+              }
+            )}
           </ScrollView>
 
-          <Text style={styles.filterLabel}>
+          <Text
+            style={styles.filterLabel}
+          >
             Rango personalizado
           </Text>
 
-          <View style={styles.dateRow}>
-            <View style={styles.dateField}>
-              <Text style={styles.dateLabel}>
+          <View
+            style={styles.dateRow}
+          >
+            <View
+              style={styles.dateField}
+            >
+              <Text
+                style={styles.dateLabel}
+              >
                 Desde
               </Text>
 
               <TextInput
                 value={startDate}
-                onChangeText={(value) => {
+                onChangeText={(
+                  value
+                ) => {
                   handleDateChange(
                     "start",
                     value
                   );
                 }}
-                style={styles.dateInput}
-                placeholder="YYYY-MM-DD"
+                style={
+                  styles.dateInput
+                }
+                placeholder="DD/MM/AAAA"
                 placeholderTextColor="#87939A"
+                keyboardType="numeric"
                 maxLength={10}
-                autoCapitalize="none"
+                accessibilityLabel="Fecha inicial"
               />
             </View>
 
-            <View style={styles.dateField}>
-              <Text style={styles.dateLabel}>
+            <View
+              style={styles.dateField}
+            >
+              <Text
+                style={styles.dateLabel}
+              >
                 Hasta
               </Text>
 
               <TextInput
                 value={endDate}
-                onChangeText={(value) => {
+                onChangeText={(
+                  value
+                ) => {
                   handleDateChange(
                     "end",
                     value
                   );
                 }}
-                style={styles.dateInput}
-                placeholder="YYYY-MM-DD"
+                style={
+                  styles.dateInput
+                }
+                placeholder="DD/MM/AAAA"
                 placeholderTextColor="#87939A"
+                keyboardType="numeric"
                 maxLength={10}
-                autoCapitalize="none"
+                accessibilityLabel="Fecha final"
               />
             </View>
           </View>
 
-          <Text style={styles.filterLabel}>
+          <Text
+            style={styles.filterLabel}
+          >
             Emoción
           </Text>
 
@@ -631,60 +746,102 @@ export default function EmotionHistoryScreen() {
           >
             <Pressable
               onPress={() => {
-                setSelectedEmotion(null);
+                setSelectedEmotion(
+                  null
+                );
+
+                setErrorMessage(
+                  null
+                );
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Todas las emociones"
+              accessibilityState={{
+                selected:
+                  selectedEmotion ===
+                  null
               }}
               style={[
                 styles.emotionFilterButton,
-                selectedEmotion === null &&
+
+                selectedEmotion ===
+                  null &&
                   styles.optionSelected
               ]}
             >
               <Text
                 style={[
                   styles.emotionFilterText,
-                  selectedEmotion === null &&
+
+                  selectedEmotion ===
+                    null &&
                     styles.optionTextSelected
                 ]}
               >
+                {selectedEmotion ===
+                null
+                  ? "✓ "
+                  : ""}
                 Todas
               </Text>
             </Pressable>
 
-            {EMOTIONS.map((emotion) => {
-              const isSelected =
-                selectedEmotion ===
-                emotion.name;
+            {EMOTIONS.map(
+              (emotion) => {
+                const isSelected =
+                  selectedEmotion ===
+                  emotion.name;
 
-              return (
-                <Pressable
-                  key={emotion.name}
-                  onPress={() => {
-                    setSelectedEmotion(
+                return (
+                  <Pressable
+                    key={
                       emotion.name
-                    );
-                  }}
-                  style={[
-                    styles.emotionFilterButton,
-                    isSelected &&
-                      styles.optionSelected
-                  ]}
-                >
-                  <Text
+                    }
+                    onPress={() => {
+                      setSelectedEmotion(
+                        emotion.name
+                      );
+
+                      setErrorMessage(
+                        null
+                      );
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Emoción ${emotion.name}`}
+                    accessibilityState={{
+                      selected:
+                        isSelected
+                    }}
                     style={[
-                      styles.emotionFilterText,
+                      styles.emotionFilterButton,
+
                       isSelected &&
-                        styles.optionTextSelected
+                        styles.optionSelected
                     ]}
                   >
-                    {emotion.emoji}{" "}
-                    {emotion.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    <Text
+                      style={[
+                        styles.emotionFilterText,
+
+                        isSelected &&
+                          styles.optionTextSelected
+                      ]}
+                    >
+                      {isSelected
+                        ? "✓ "
+                        : ""}
+                      {emotion.emoji}{" "}
+                      {emotion.name}
+                    </Text>
+                  </Pressable>
+                );
+              }
+            )}
           </ScrollView>
 
-          <Text style={styles.filterLabel}>
+          <Text
+            style={styles.filterLabel}
+          >
             Intensidad
           </Text>
 
@@ -699,21 +856,42 @@ export default function EmotionHistoryScreen() {
           >
             <Pressable
               onPress={() => {
-                setSelectedIntensity(null);
+                setSelectedIntensity(
+                  null
+                );
+
+                setErrorMessage(
+                  null
+                );
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Todas las intensidades"
+              accessibilityState={{
+                selected:
+                  selectedIntensity ===
+                  null
               }}
               style={[
                 styles.intensityButton,
-                selectedIntensity === null &&
+
+                selectedIntensity ===
+                  null &&
                   styles.optionSelected
               ]}
             >
               <Text
                 style={[
                   styles.intensityText,
-                  selectedIntensity === null &&
+
+                  selectedIntensity ===
+                    null &&
                     styles.optionTextSelected
                 ]}
               >
+                {selectedIntensity ===
+                null
+                  ? "✓ "
+                  : ""}
                 Todas
               </Text>
             </Pressable>
@@ -722,10 +900,12 @@ export default function EmotionHistoryScreen() {
               {
                 length: 10
               },
-              (_, index) => index + 1
+              (_, index) =>
+                index + 1
             ).map((value) => {
               const isSelected =
-                selectedIntensity === value;
+                selectedIntensity ===
+                value;
 
               return (
                 <Pressable
@@ -734,9 +914,20 @@ export default function EmotionHistoryScreen() {
                     setSelectedIntensity(
                       value
                     );
+
+                    setErrorMessage(
+                      null
+                    );
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Intensidad ${value}`}
+                  accessibilityState={{
+                    selected:
+                      isSelected
                   }}
                   style={[
                     styles.intensityNumber,
+
                     isSelected &&
                       styles.optionSelected
                   ]}
@@ -744,11 +935,14 @@ export default function EmotionHistoryScreen() {
                   <Text
                     style={[
                       styles.intensityText,
+
                       isSelected &&
                         styles.optionTextSelected
                     ]}
                   >
-                    {value}
+                    {isSelected
+                      ? `✓ ${value}`
+                      : value}
                   </Text>
                 </Pressable>
               );
@@ -756,22 +950,40 @@ export default function EmotionHistoryScreen() {
           </ScrollView>
 
           {errorMessage ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>
+            <View
+              style={styles.errorBox}
+            >
+              <Text
+                style={
+                  styles.errorText
+                }
+              >
                 {errorMessage}
               </Text>
             </View>
           ) : null}
 
-          <View style={styles.filterActions}>
+          <View
+            style={
+              styles.filterActions
+            }
+          >
             <Pressable
               onPress={() => {
                 void handleClearFilters();
               }}
               disabled={isLoading}
-              style={styles.clearButton}
+              style={
+                styles.clearButton
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Limpiar filtros"
             >
-              <Text style={styles.clearText}>
+              <Text
+                style={
+                  styles.clearText
+                }
+              >
                 Limpiar
               </Text>
             </Pressable>
@@ -781,7 +993,11 @@ export default function EmotionHistoryScreen() {
                 void handleApplyFilters();
               }}
               disabled={isLoading}
-              style={styles.applyButton}
+              style={
+                styles.applyButton
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Aplicar filtros"
             >
               {isLoading ? (
                 <ActivityIndicator
@@ -789,7 +1005,9 @@ export default function EmotionHistoryScreen() {
                 />
               ) : (
                 <Text
-                  style={styles.applyText}
+                  style={
+                    styles.applyText
+                  }
                 >
                   Aplicar filtros
                 </Text>
@@ -799,47 +1017,83 @@ export default function EmotionHistoryScreen() {
         </View>
 
         {isLoading ? (
-          <View style={styles.loadingBox}>
+          <View
+            style={styles.loadingBox}
+          >
             <ActivityIndicator
               size="large"
               color="#526D82"
             />
 
-            <Text style={styles.loadingText}>
+            <Text
+              style={
+                styles.loadingText
+              }
+            >
               Consultando historial...
             </Text>
           </View>
         ) : (
           <>
-            <Text style={styles.sectionTitle}>
+            <Text
+              style={
+                styles.sectionTitle
+              }
+            >
               Resumen
             </Text>
 
-            <View style={styles.summaryGrid}>
-              <View style={styles.summaryCard}>
+            <View
+              style={
+                styles.summaryGrid
+              }
+            >
+              <View
+                style={
+                  styles.summaryCard
+                }
+              >
                 <Text
-                  style={styles.summaryValue}
+                  style={
+                    styles.summaryValue
+                  }
                 >
-                  {summary.totalRecords}
+                  {
+                    summary.totalRecords
+                  }
                 </Text>
 
                 <Text
-                  style={styles.summaryLabel}
+                  style={
+                    styles.summaryLabel
+                  }
                 >
-                  Registros
+                  {summary.totalRecords ===
+                  1
+                    ? "Registro"
+                    : "Registros"}
                 </Text>
               </View>
 
-              <View style={styles.summaryCard}>
+              <View
+                style={
+                  styles.summaryCard
+                }
+              >
                 <Text
-                  style={styles.summaryValue}
+                  style={
+                    styles.summaryValue
+                  }
                 >
-                  {summary.averageIntensity
-                    .toFixed(1)}
+                  {summary.averageIntensity.toFixed(
+                    1
+                  )}
                 </Text>
 
                 <Text
-                  style={styles.summaryLabel}
+                  style={
+                    styles.summaryLabel
+                  }
                 >
                   Intensidad promedio
                 </Text>
@@ -863,7 +1117,11 @@ export default function EmotionHistoryScreen() {
                     : "—"}
                 </Text>
 
-                <View style={styles.predominantText}>
+                <View
+                  style={
+                    styles.predominantText
+                  }
+                >
                   <Text
                     style={
                       styles.predominantValue
@@ -874,7 +1132,9 @@ export default function EmotionHistoryScreen() {
                   </Text>
 
                   <Text
-                    style={styles.summaryLabel}
+                    style={
+                      styles.summaryLabel
+                    }
                   >
                     Emoción predominante
                   </Text>
@@ -882,10 +1142,12 @@ export default function EmotionHistoryScreen() {
               </View>
             </View>
 
-            {summary.distribution.length >
-            0 ? (
+            {summary.distribution
+              .length > 0 ? (
               <View
-                style={styles.distributionCard}
+                style={
+                  styles.distributionCard
+                }
               >
                 <Text
                   style={
@@ -898,7 +1160,8 @@ export default function EmotionHistoryScreen() {
                 {summary.distribution.map(
                   (item) => {
                     const percentage =
-                      summary.totalRecords > 0
+                      summary.totalRecords >
+                      0
                         ? Math.round(
                             (item.total /
                               summary.totalRecords) *
@@ -908,7 +1171,9 @@ export default function EmotionHistoryScreen() {
 
                     return (
                       <View
-                        key={item.emotion}
+                        key={
+                          item.emotion
+                        }
                         style={
                           styles.distributionRow
                         }
@@ -939,35 +1204,95 @@ export default function EmotionHistoryScreen() {
               </View>
             ) : null}
 
-            <Text style={styles.sectionTitle}>
+            <Text
+              style={
+                styles.sectionTitle
+              }
+            >
               Registros
             </Text>
 
             {groups.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <Text style={styles.emptyEmoji}>
+              <View
+                style={styles.emptyBox}
+              >
+                <Text
+                  style={
+                    styles.emptyEmoji
+                  }
+                >
                   📭
                 </Text>
 
-                <Text style={styles.emptyTitle}>
-                  No existen registros
+                <Text
+                  style={
+                    styles.emptyTitle
+                  }
+                >
+                  {hasActiveFilters
+                    ? "Sin resultados"
+                    : "Aún no tienes registros"}
                 </Text>
 
-                <Text style={styles.emptyText}>
-                  No se encontraron emociones
-                  con los filtros seleccionados.
+                <Text
+                  style={
+                    styles.emptyText
+                  }
+                >
+                  {hasActiveFilters
+                    ? "No se encontraron emociones con los filtros seleccionados."
+                    : "Registra tu primera emoción para comenzar a construir tu historial."}
                 </Text>
+
+                <Pressable
+                  onPress={() => {
+                    if (
+                      hasActiveFilters
+                    ) {
+                      void handleClearFilters();
+                    } else {
+                      router.push(
+                        "/(app)/emotion-register"
+                      );
+                    }
+                  }}
+                  style={
+                    styles.emptyActionButton
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    hasActiveFilters
+                      ? "Limpiar filtros"
+                      : "Registrar una emoción"
+                  }
+                >
+                  <Text
+                    style={
+                      styles.emptyActionText
+                    }
+                  >
+                    {hasActiveFilters
+                      ? "Limpiar filtros"
+                      : "Registrar una emoción"}
+                  </Text>
+                </Pressable>
               </View>
             ) : (
               groups.map((group) => (
                 <View
                   key={group.date}
-                  style={styles.dateGroup}
+                  style={
+                    styles.dateGroup
+                  }
                 >
                   <Text
-                    style={styles.groupDate}
+                    style={
+                      styles.groupDate
+                    }
                   >
-                    {formatDate(group.date)}
+                    {formatDate(
+                      group.date
+                    )}
                   </Text>
 
                   {group.records.map(
@@ -1004,7 +1329,9 @@ export default function EmotionHistoryScreen() {
                                   styles.recordMood
                                 }
                               >
-                                {record.mood}
+                                {
+                                  record.mood
+                                }
                               </Text>
 
                               <Text
@@ -1029,7 +1356,10 @@ export default function EmotionHistoryScreen() {
                                 styles.intensityBadgeValue
                               }
                             >
-                              {record.intensity}/10
+                              {
+                                record.intensity
+                              }
+                              /10
                             </Text>
 
                             <Text
@@ -1084,6 +1414,7 @@ const styles = StyleSheet.create({
   backButton: {
     alignSelf: "flex-start",
     paddingVertical: 8,
+    paddingHorizontal: 4,
     marginBottom: 10
   },
 
@@ -1181,7 +1512,7 @@ const styles = StyleSheet.create({
 
   dateLabel: {
     color: "#74828A",
-    fontSize: 11,
+    fontSize: 12,
     marginBottom: 6
   },
 
@@ -1229,14 +1560,15 @@ const styles = StyleSheet.create({
   },
 
   intensityNumber: {
-    width: 39,
-    height: 39,
+    minWidth: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#D5DEE2",
-    borderRadius: 20,
-    backgroundColor: "#F8FAFB"
+    borderRadius: 22,
+    backgroundColor: "#F8FAFB",
+    paddingHorizontal: 4
   },
 
   intensityText: {
@@ -1347,7 +1679,7 @@ const styles = StyleSheet.create({
 
   summaryLabel: {
     color: "#718087",
-    fontSize: 11,
+    fontSize: 12,
     textAlign: "center"
   },
 
@@ -1436,6 +1768,22 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
 
+  emptyActionButton: {
+    minHeight: 46,
+    marginTop: 18,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#526D82",
+    borderRadius: 14
+  },
+
+  emptyActionText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800"
+  },
+
   dateGroup: {
     marginBottom: 20
   },
@@ -1489,7 +1837,7 @@ const styles = StyleSheet.create({
 
   recordTime: {
     color: "#87939A",
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2
   },
 
@@ -1509,7 +1857,7 @@ const styles = StyleSheet.create({
 
   intensityBadgeLabel: {
     color: "#718087",
-    fontSize: 9,
+    fontSize: 12,
     marginTop: 1
   },
 
