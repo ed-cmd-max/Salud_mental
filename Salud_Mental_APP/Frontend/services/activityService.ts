@@ -29,10 +29,12 @@ export interface ActivityResponseRecord {
   user_id: number;
   activity_id: number;
   response: string;
+
   activity_status:
     | "started"
     | "in_progress"
     | "completed";
+
   observation: string | null;
   points_awarded: boolean;
   completed_at: string;
@@ -41,10 +43,12 @@ export interface ActivityResponseRecord {
 export interface CompletedActivityRecord {
   id: number;
   response: string;
+
   activity_status:
     | "started"
     | "in_progress"
     | "completed";
+
   observation: string | null;
   points_awarded: boolean;
   completed_at: string;
@@ -55,6 +59,7 @@ export interface CompletedActivityRecord {
   category: string | null;
   instructions: string;
   estimated_duration: number;
+
   activity_catalog_status:
     ActivityStatus;
 }
@@ -74,6 +79,18 @@ export interface CompleteActivityPayload {
   observation?: string;
 }
 
+/*
+ * Logro desbloqueado específicamente
+ * durante una acción de gamificación.
+ */
+export interface UnlockedAchievement {
+  id: number;
+  code: string;
+  title: string;
+  description: string | null;
+  criterion_type: string;
+}
+
 export interface CompleteActivityResponse {
   message: string;
 
@@ -81,8 +98,18 @@ export interface CompleteActivityResponse {
     ActivityResponseRecord;
 
   points_added: number;
+
   already_rewarded: boolean;
-  progress: ActivityProgress;
+
+  progress:
+    ActivityProgress;
+
+  /*
+   * Puede contener cero, uno o varios
+   * logros desbloqueados en esta acción.
+   */
+  unlocked_achievements:
+    UnlockedAchievement[];
 }
 
 export interface CompletedActivitiesResponse {
@@ -94,7 +121,8 @@ export interface CompletedActivitiesResponse {
 }
 
 /**
- * Obtiene únicamente las actividades activas.
+ * Obtiene únicamente las
+ * actividades activas.
  */
 export async function getActivities():
 Promise<ActivityListResponse> {
@@ -107,7 +135,8 @@ Promise<ActivityListResponse> {
 }
 
 /**
- * Consulta el detalle de una actividad activa.
+ * Consulta el detalle de una
+ * actividad activa.
  */
 export async function getActivityById(
   activityId: number
@@ -121,7 +150,9 @@ export async function getActivityById(
 }
 
 /**
- * Guarda la respuesta de una actividad.
+ * Guarda la respuesta de una actividad
+ * y recibe el progreso actualizado junto
+ * con los logros recién desbloqueados.
  */
 export async function completeActivity(
   activityId: number,

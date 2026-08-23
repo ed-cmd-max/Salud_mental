@@ -69,11 +69,19 @@ export async function register(req, res) {
 
     const user = result.rows[0];
 
-    await client.query(
-      `INSERT INTO gamification (user_id, points, level)
-       VALUES ($1, 0, 1)`,
-      [user.id]
-    );
+    // La gamificación solo se crea para usuarios normales.
+    // Los administradores no participan en este módulo.
+    if (user.role === "user") {
+      await client.query(
+        `INSERT INTO gamification (
+          user_id,
+          points,
+          level
+        )
+        VALUES ($1, 0, 1)`,
+        [user.id]
+      );
+    }
 
     await client.query("COMMIT");
 
@@ -81,6 +89,7 @@ export async function register(req, res) {
       message: "Usuario registrado correctamente",
       user
     });
+
   } catch (error) {
     if (client) {
       await client.query("ROLLBACK");
@@ -97,6 +106,7 @@ export async function register(req, res) {
     return res.status(500).json({
       message: "Error al registrar usuario"
     });
+
   } finally {
     client?.release();
   }
@@ -122,8 +132,8 @@ export async function login(req, res) {
         role,
         account_status,
         created_at
-       FROM users
-       WHERE LOWER(email) = $1`,
+      FROM users
+      WHERE LOWER(email) = $1`,
       [email]
     );
 
@@ -175,6 +185,7 @@ export async function login(req, res) {
         account_status: user.account_status
       }
     });
+
   } catch (error) {
     console.error("Error al iniciar sesión:", error);
 

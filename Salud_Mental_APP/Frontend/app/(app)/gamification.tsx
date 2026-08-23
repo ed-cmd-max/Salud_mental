@@ -31,6 +31,53 @@ import {
   getGamificationProgress
 } from "../../services/gamificationService";
 
+type AchievementFilter =
+  | "all"
+  | "emotion_count"
+  | "activity_count"
+  | "level"
+  | "streak_days"
+  | "points";
+
+interface FilterOption {
+  key: AchievementFilter;
+  label: string;
+  emoji: string;
+}
+
+const ACHIEVEMENT_FILTERS: FilterOption[] = [
+  {
+    key: "all",
+    label: "Todos",
+    emoji: "🎖️"
+  },
+  {
+    key: "emotion_count",
+    label: "Emociones",
+    emoji: "😊"
+  },
+  {
+    key: "activity_count",
+    label: "Actividades",
+    emoji: "🌿"
+  },
+  {
+    key: "level",
+    label: "Niveles",
+    emoji: "⭐"
+  },
+  {
+    key: "streak_days",
+    label: "Rachas",
+    emoji: "🔥"
+  },
+  {
+    key: "points",
+    label: "Puntos",
+    emoji: "🏆"
+  }
+];
+
 const EMPTY_PROGRESS:
   GamificationProgress = {
     points: 0,
@@ -72,9 +119,7 @@ function formatDate(
     : new Date(value);
 
   if (
-    Number.isNaN(
-      date.getTime()
-    )
+    Number.isNaN(date.getTime())
   ) {
     return value;
   }
@@ -96,13 +141,10 @@ function formatDateTime(
     return "";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
   if (
-    Number.isNaN(
-      date.getTime()
-    )
+    Number.isNaN(date.getTime())
   ) {
     return value;
   }
@@ -165,21 +207,17 @@ function getCriterionText(
 
     case "activity_count":
       return requiredValue === 1
-        ? "Completar una actividad de autocuidado y autorreflexión"
-        : `Completar ${requiredValue} actividades de autocuidado y autorreflexión diferentes`;
+        ? "Completar una actividad diferente"
+        : `Completar ${requiredValue} actividades diferentes`;
 
     case "level":
       return `Alcanzar el nivel ${requiredValue}`;
 
     case "streak_days":
-      return requiredValue === 1
-        ? "Mantener una racha de 1 día"
-        : `Mantener una racha de ${requiredValue} días`;
+      return `Mantener una racha de ${requiredValue} días`;
 
     case "points":
-      return requiredValue === 1
-        ? "Acumular 1 punto"
-        : `Acumular ${requiredValue} puntos`;
+      return `Acumular ${requiredValue} puntos`;
 
     default:
       return "Cumplir el criterio del logro";
@@ -198,26 +236,16 @@ function StatCard({
   label
 }: StatCardProps) {
   return (
-    <View
-      style={styles.statCard}
-      accessible
-      accessibilityLabel={`${value} ${label}`}
-    >
-      <Text
-        style={styles.statEmoji}
-      >
+    <View style={styles.statCard}>
+      <Text style={styles.statEmoji}>
         {emoji}
       </Text>
 
-      <Text
-        style={styles.statValue}
-      >
+      <Text style={styles.statValue}>
         {value}
       </Text>
 
-      <Text
-        style={styles.statLabel}
-      >
+      <Text style={styles.statLabel}>
         {label}
       </Text>
     </View>
@@ -244,6 +272,14 @@ export default function GamificationScreen() {
     );
 
   const [
+    selectedFilter,
+    setSelectedFilter
+  ] =
+    useState<AchievementFilter>(
+      "all"
+    );
+
+  const [
     isLoading,
     setIsLoading
   ] = useState(true);
@@ -256,10 +292,9 @@ export default function GamificationScreen() {
   const [
     errorMessage,
     setErrorMessage
-  ] =
-    useState<string | null>(
-      null
-    );
+  ] = useState<string | null>(
+    null
+  );
 
   const loadGamification =
     useCallback(
@@ -320,6 +355,11 @@ export default function GamificationScreen() {
       100
     );
 
+  /*
+   * Primero ordenamos los logros:
+   * los obtenidos aparecen antes que
+   * los pendientes.
+   */
   const sortedAchievements =
     [
       ...achievementsResult
@@ -330,16 +370,51 @@ export default function GamificationScreen() {
           first.unlocked ===
           second.unlocked
         ) {
-          return (
-            first.id -
-            second.id
-          );
+          return first.id - second.id;
         }
 
         return first.unlocked
           ? -1
           : 1;
       }
+    );
+
+  /*
+   * Después aplicamos el filtro
+   * seleccionado por el usuario.
+   */
+  const filteredAchievements =
+    sortedAchievements.filter(
+      (achievement) => {
+        if (
+          selectedFilter ===
+          "all"
+        ) {
+          return true;
+        }
+
+        return (
+          achievement.criterion_type ===
+          selectedFilter
+        );
+      }
+    );
+
+  /*
+   * Cuenta cuántos logros del filtro
+   * actual ya fueron obtenidos.
+   */
+  const filteredUnlockedCount =
+    filteredAchievements.filter(
+      (achievement) =>
+        achievement.unlocked
+    ).length;
+
+  const selectedFilterData =
+    ACHIEVEMENT_FILTERS.find(
+      (filter) =>
+        filter.key ===
+        selectedFilter
     );
 
   return (
@@ -350,19 +425,18 @@ export default function GamificationScreen() {
         contentContainerStyle={
           styles.scrollContent
         }
+        showsVerticalScrollIndicator={
+          false
+        }
         refreshControl={
           <RefreshControl
-            refreshing={
-              isRefreshing
-            }
+            refreshing={isRefreshing}
             onRefresh={() => {
               void loadGamification(
                 true
               );
             }}
-            colors={[
-              "#526D82"
-            ]}
+            colors={["#526D82"]}
             tintColor="#526D82"
           />
         }
@@ -376,27 +450,17 @@ export default function GamificationScreen() {
           style={styles.backButton}
           hitSlop={10}
         >
-          <Text
-            style={styles.backText}
-          >
+          <Text style={styles.backText}>
             ‹ Volver
           </Text>
         </Pressable>
 
-        <View
-          style={styles.header}
-        >
-          <Text
-            style={styles.title}
-          >
+        <View style={styles.header}>
+          <Text style={styles.title}>
             Mi progreso
           </Text>
 
-          <Text
-            style={
-              styles.subtitle
-            }
-          >
+          <Text style={styles.subtitle}>
             Consulta tus puntos, racha,
             nivel y logros desbloqueados.
           </Text>
@@ -404,9 +468,7 @@ export default function GamificationScreen() {
 
         {isLoading ? (
           <View
-            style={
-              styles.loadingBox
-            }
+            style={styles.loadingBox}
           >
             <ActivityIndicator
               size="large"
@@ -414,9 +476,7 @@ export default function GamificationScreen() {
             />
 
             <Text
-              style={
-                styles.loadingText
-              }
+              style={styles.loadingText}
             >
               Consultando progreso...
             </Text>
@@ -425,22 +485,16 @@ export default function GamificationScreen() {
 
         {!isLoading &&
         errorMessage ? (
-          <View
-            style={styles.errorBox}
-          >
+          <View style={styles.errorBox}>
             <Text
-              style={
-                styles.errorTitle
-              }
+              style={styles.errorTitle}
             >
               No se pudo cargar el
               progreso
             </Text>
 
             <Text
-              style={
-                styles.errorText
-              }
+              style={styles.errorText}
             >
               {errorMessage}
             </Text>
@@ -449,16 +503,12 @@ export default function GamificationScreen() {
               onPress={() => {
                 void loadGamification();
               }}
-              style={
-                styles.retryButton
-              }
+              style={styles.retryButton}
               accessibilityRole="button"
-              accessibilityLabel="Intentar nuevamente"
+              accessibilityLabel="Intentar cargar nuevamente"
             >
               <Text
-                style={
-                  styles.retryText
-                }
+                style={styles.retryText}
               >
                 Intentar nuevamente
               </Text>
@@ -470,13 +520,7 @@ export default function GamificationScreen() {
         !errorMessage ? (
           <>
             <View
-              style={
-                styles.levelCard
-              }
-              accessible
-              accessibilityLabel={`Nivel ${progress.level}, ${progress.points} puntos, ${Math.round(
-                progressPercentage
-              )} por ciento de progreso`}
+              style={styles.levelCard}
             >
               <View
                 style={
@@ -519,9 +563,7 @@ export default function GamificationScreen() {
                       styles.pointsBadgeLabel
                     }
                   >
-                    {progress.points === 1
-                      ? "punto"
-                      : "puntos"}
+                    puntos
                   </Text>
                 </View>
               </View>
@@ -582,12 +624,7 @@ export default function GamificationScreen() {
                     progress
                       .points_in_current_level
                   }{" "}
-                  {progress
-                    .points_in_current_level ===
-                  1
-                    ? "punto"
-                    : "puntos"}{" "}
-                  en este nivel
+                  puntos en este nivel
                 </Text>
 
                 <Text
@@ -599,20 +636,13 @@ export default function GamificationScreen() {
                   {
                     progress
                       .points_to_next_level
-                  }{" "}
-                  {progress
-                    .points_to_next_level ===
-                  1
-                    ? "punto"
-                    : "puntos"}
+                  }
                 </Text>
               </View>
             </View>
 
             <View
-              style={
-                styles.statsGrid
-              }
+              style={styles.statsGrid}
             >
               <StatCard
                 emoji="🔥"
@@ -633,13 +663,7 @@ export default function GamificationScreen() {
                   progress
                     .activities_completed
                 }
-                label={
-                  progress
-                    .activities_completed ===
-                  1
-                    ? "actividad diferente"
-                    : "actividades diferentes"
-                }
+                label="actividades diferentes"
               />
 
               <StatCard
@@ -648,13 +672,7 @@ export default function GamificationScreen() {
                   achievementsResult
                     .unlocked_count
                 }
-                label={
-                  achievementsResult
-                    .unlocked_count ===
-                  1
-                    ? "logro obtenido"
-                    : "logros obtenidos"
-                }
+                label="logros obtenidos"
               />
 
               <StatCard
@@ -662,12 +680,7 @@ export default function GamificationScreen() {
                 value={
                   achievementsResult.total
                 }
-                label={
-                  achievementsResult.total ===
-                  1
-                    ? "logro disponible"
-                    : "logros disponibles"
-                }
+                label="logros disponibles"
               />
             </View>
 
@@ -721,7 +734,7 @@ export default function GamificationScreen() {
                 styles.achievementHeader
               }
             >
-              <View>
+              <View style={styles.achievementHeaderText}>
                 <Text
                   style={
                     styles.sectionTitle
@@ -752,8 +765,6 @@ export default function GamificationScreen() {
                 style={
                   styles.achievementCounter
                 }
-                accessible
-                accessibilityLabel={`${achievementsResult.unlocked_count} de ${achievementsResult.total} logros desbloqueados`}
               >
                 <Text
                   style={
@@ -773,53 +784,202 @@ export default function GamificationScreen() {
               </View>
             </View>
 
-            {sortedAchievements.length ===
+            {achievementsResult.total >
+            0 ? (
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={
+                    false
+                  }
+                  contentContainerStyle={
+                    styles.filtersContent
+                  }
+                  style={
+                    styles.filtersScroll
+                  }
+                >
+                  {ACHIEVEMENT_FILTERS.map(
+                    (filter) => {
+                      const isSelected =
+                        selectedFilter ===
+                        filter.key;
+
+                      return (
+                        <Pressable
+                          key={
+                            filter.key
+                          }
+                          onPress={() =>
+                            setSelectedFilter(
+                              filter.key
+                            )
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel={`Filtrar logros por ${filter.label}`}
+                          accessibilityState={{
+                            selected:
+                              isSelected
+                          }}
+                          style={({
+                            pressed
+                          }) => [
+                            styles.filterChip,
+
+                            isSelected &&
+                              styles.filterChipSelected,
+
+                            pressed &&
+                              styles.filterChipPressed
+                          ]}
+                        >
+                          <Text
+                            style={
+                              styles.filterEmoji
+                            }
+                          >
+                            {
+                              filter.emoji
+                            }
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.filterText,
+
+                              isSelected &&
+                                styles.filterTextSelected
+                            ]}
+                          >
+                            {
+                              filter.label
+                            }
+                          </Text>
+                        </Pressable>
+                      );
+                    }
+                  )}
+                </ScrollView>
+
+                <View
+                  style={
+                    styles.filterSummary
+                  }
+                >
+                  <Text
+                    style={
+                      styles.filterSummaryText
+                    }
+                  >
+                    {
+                      selectedFilterData
+                        ?.emoji
+                    }{" "}
+                    {selectedFilter ===
+                    "all"
+                      ? "Todos los logros"
+                      : selectedFilterData
+                          ?.label}
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.filterSummaryCount
+                    }
+                  >
+                    {
+                      filteredUnlockedCount
+                    }
+                    /
+                    {
+                      filteredAchievements.length
+                    }{" "}
+                    obtenidos
+                  </Text>
+                </View>
+              </>
+            ) : null}
+
+            {achievementsResult.total ===
             0 ? (
               <View
-                style={
-                  styles.emptyBox
-                }
+                style={styles.emptyBox}
               >
                 <Text
-                  style={
-                    styles.emptyEmoji
-                  }
+                  style={styles.emptyEmoji}
                 >
                   🎖️
                 </Text>
 
                 <Text
-                  style={
-                    styles.emptyTitle
-                  }
+                  style={styles.emptyTitle}
                 >
                   No hay logros disponibles
                 </Text>
 
                 <Text
-                  style={
-                    styles.emptyText
-                  }
+                  style={styles.emptyText}
                 >
                   El catálogo de logros se
                   encuentra vacío.
                 </Text>
               </View>
+            ) : filteredAchievements.length ===
+              0 ? (
+              <View
+                style={styles.emptyBox}
+              >
+                <Text
+                  style={styles.emptyEmoji}
+                >
+                  {
+                    selectedFilterData
+                      ?.emoji
+                  }
+                </Text>
+
+                <Text
+                  style={styles.emptyTitle}
+                >
+                  No hay logros de este tipo
+                </Text>
+
+                <Text
+                  style={styles.emptyText}
+                >
+                  Actualmente no existen
+                  logros disponibles en esta
+                  categoría.
+                </Text>
+
+                <Pressable
+                  onPress={() =>
+                    setSelectedFilter(
+                      "all"
+                    )
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="Mostrar todos los logros"
+                  style={
+                    styles.showAllButton
+                  }
+                >
+                  <Text
+                    style={
+                      styles.showAllButtonText
+                    }
+                  >
+                    Ver todos los logros
+                  </Text>
+                </Pressable>
+              </View>
             ) : (
-              sortedAchievements.map(
+              filteredAchievements.map(
                 (achievement) => (
                   <View
                     key={
                       achievement.id
                     }
-                    accessible
-                    accessibilityLabel={`${achievement.title}. ${
-                      achievement.unlocked
-                        ? "Obtenido"
-                        : "Pendiente"
-                    }. ${getCriterionText(
-                      achievement
-                    )}`}
                     style={[
                       styles
                         .achievementCard,
@@ -987,8 +1147,7 @@ const styles =
   StyleSheet.create({
     safeArea: {
       flex: 1,
-      backgroundColor:
-        "#F2F6F7"
+      backgroundColor: "#F2F6F7"
     },
 
     scrollContent: {
@@ -998,12 +1157,8 @@ const styles =
     },
 
     backButton: {
-      alignSelf:
-        "flex-start",
-      minHeight: 44,
-      justifyContent:
-        "center",
-      paddingHorizontal: 4,
+      alignSelf: "flex-start",
+      paddingVertical: 8,
       marginBottom: 10
     },
 
@@ -1031,8 +1186,7 @@ const styles =
     },
 
     loadingBox: {
-      alignItems:
-        "center",
+      alignItems: "center",
       paddingVertical: 65
     },
 
@@ -1043,8 +1197,7 @@ const styles =
     },
 
     errorBox: {
-      backgroundColor:
-        "#FDECEC",
+      backgroundColor: "#FDECEC",
       borderRadius: 18,
       padding: 18
     },
@@ -1064,13 +1217,10 @@ const styles =
 
     retryButton: {
       minHeight: 45,
-      alignItems:
-        "center",
-      justifyContent:
-        "center",
+      alignItems: "center",
+      justifyContent: "center",
       borderWidth: 1,
-      borderColor:
-        "#A14848",
+      borderColor: "#A14848",
       borderRadius: 13,
       marginTop: 14
     },
@@ -1082,8 +1232,7 @@ const styles =
     },
 
     levelCard: {
-      backgroundColor:
-        "#526D82",
+      backgroundColor: "#526D82",
       borderRadius: 24,
       padding: 21,
       marginBottom: 16
@@ -1091,15 +1240,14 @@ const styles =
 
     levelHeader: {
       flexDirection: "row",
-      alignItems:
-        "flex-start",
+      alignItems: "flex-start",
       justifyContent:
         "space-between"
     },
 
     levelEyebrow: {
       color: "#D9E5EA",
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: "800",
       letterSpacing: 1.2
     },
@@ -1113,10 +1261,8 @@ const styles =
 
     pointsBadge: {
       minWidth: 92,
-      alignItems:
-        "center",
-      backgroundColor:
-        "#FFFFFF",
+      alignItems: "center",
+      backgroundColor: "#FFFFFF",
       borderRadius: 17,
       paddingHorizontal: 15,
       paddingVertical: 11
@@ -1156,16 +1302,14 @@ const styles =
 
     progressTrack: {
       height: 11,
-      backgroundColor:
-        "#7890A0",
+      backgroundColor: "#7890A0",
       borderRadius: 7,
       overflow: "hidden"
     },
 
     progressFill: {
       height: "100%",
-      backgroundColor:
-        "#FFFFFF",
+      backgroundColor: "#FFFFFF",
       borderRadius: 7
     },
 
@@ -1173,12 +1317,10 @@ const styles =
       flexDirection: "row",
       justifyContent:
         "space-between",
-      marginTop: 8,
-      gap: 10
+      marginTop: 8
     },
 
     progressFooterText: {
-      flex: 1,
       color: "#DCE7EC",
       fontSize: 12
     },
@@ -1195,17 +1337,13 @@ const styles =
     statCard: {
       width: "48.5%",
       minHeight: 125,
-      alignItems:
-        "center",
-      justifyContent:
-        "center",
-      backgroundColor:
-        "#FFFFFF",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#FFFFFF",
       borderRadius: 19,
       padding: 14,
       elevation: 2,
-      shadowColor:
-        "#000000",
+      shadowColor: "#000000",
       shadowOpacity: 0.04,
       shadowRadius: 7,
       shadowOffset: {
@@ -1228,17 +1366,15 @@ const styles =
     statLabel: {
       color: "#718087",
       fontSize: 12,
-      lineHeight: 17,
+      lineHeight: 16,
       textAlign: "center",
       marginTop: 3
     },
 
     lastActivityCard: {
       flexDirection: "row",
-      alignItems:
-        "center",
-      backgroundColor:
-        "#E6EEF1",
+      alignItems: "center",
+      backgroundColor: "#E6EEF1",
       borderRadius: 18,
       padding: 16,
       marginBottom: 25
@@ -1247,12 +1383,9 @@ const styles =
     lastActivityIcon: {
       width: 48,
       height: 48,
-      alignItems:
-        "center",
-      justifyContent:
-        "center",
-      backgroundColor:
-        "#FFFFFF",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#FFFFFF",
       borderRadius: 15,
       marginRight: 13
     },
@@ -1275,17 +1408,20 @@ const styles =
       color: "#405A69",
       fontSize: 15,
       fontWeight: "800",
-      textTransform:
-        "capitalize"
+      textTransform: "capitalize"
     },
 
     achievementHeader: {
       flexDirection: "row",
-      alignItems:
-        "center",
+      alignItems: "center",
       justifyContent:
         "space-between",
       marginBottom: 13
+    },
+
+    achievementHeaderText: {
+      flex: 1,
+      paddingRight: 10
     },
 
     sectionTitle: {
@@ -1303,12 +1439,9 @@ const styles =
     achievementCounter: {
       minWidth: 47,
       height: 34,
-      alignItems:
-        "center",
-      justifyContent:
-        "center",
-      backgroundColor:
-        "#DDE8EC",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#DDE8EC",
       borderRadius: 17,
       paddingHorizontal: 10
     },
@@ -1319,43 +1452,107 @@ const styles =
       fontWeight: "900"
     },
 
+    /*
+     * Filtros de logros
+     */
+    filtersScroll: {
+      marginHorizontal: -20,
+      marginBottom: 11
+    },
+
+    filtersContent: {
+      paddingHorizontal: 20,
+      gap: 9
+    },
+
+    filterChip: {
+      minHeight: 42,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: "#D6E0E4",
+      borderRadius: 21,
+      paddingHorizontal: 14
+    },
+
+    filterChipSelected: {
+      backgroundColor: "#526D82",
+      borderColor: "#526D82"
+    },
+
+    filterChipPressed: {
+      opacity: 0.82
+    },
+
+    filterEmoji: {
+      fontSize: 15,
+      marginRight: 6
+    },
+
+    filterText: {
+      color: "#5F7079",
+      fontSize: 13,
+      fontWeight: "700"
+    },
+
+    filterTextSelected: {
+      color: "#FFFFFF"
+    },
+
+    filterSummary: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent:
+        "space-between",
+      marginBottom: 13,
+      paddingHorizontal: 2
+    },
+
+    filterSummaryText: {
+      flex: 1,
+      color: "#526D82",
+      fontSize: 13,
+      fontWeight: "800"
+    },
+
+    filterSummaryCount: {
+      color: "#718087",
+      fontSize: 12,
+      fontWeight: "700",
+      marginLeft: 10
+    },
+
     achievementCard: {
       flexDirection: "row",
-      backgroundColor:
-        "#FFFFFF",
+      backgroundColor: "#FFFFFF",
       borderRadius: 19,
       padding: 16,
       marginBottom: 12,
       borderWidth: 1,
-      borderColor:
-        "#E3E9EC",
+      borderColor: "#E3E9EC",
       opacity: 0.78
     },
 
     achievementCardUnlocked: {
-      borderColor:
-        "#B7D7C0",
-      backgroundColor:
-        "#F7FCF8",
+      borderColor: "#B7D7C0",
+      backgroundColor: "#F7FCF8",
       opacity: 1
     },
 
     achievementIcon: {
       width: 53,
       height: 53,
-      alignItems:
-        "center",
-      justifyContent:
-        "center",
-      backgroundColor:
-        "#EDF1F3",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#EDF1F3",
       borderRadius: 17,
       marginRight: 13
     },
 
     achievementIconUnlocked: {
-      backgroundColor:
-        "#DFF0E4"
+      backgroundColor: "#DFF0E4"
     },
 
     achievementEmoji: {
@@ -1368,8 +1565,7 @@ const styles =
 
     achievementTitleRow: {
       flexDirection: "row",
-      alignItems:
-        "flex-start",
+      alignItems: "flex-start",
       justifyContent:
         "space-between"
     },
@@ -1389,13 +1585,11 @@ const styles =
     },
 
     unlockedBadge: {
-      backgroundColor:
-        "#DFF0E4"
+      backgroundColor: "#DFF0E4"
     },
 
     pendingBadge: {
-      backgroundColor:
-        "#EDF1F3"
+      backgroundColor: "#EDF1F3"
     },
 
     achievementStatusText: {
@@ -1432,10 +1626,8 @@ const styles =
     },
 
     emptyBox: {
-      alignItems:
-        "center",
-      backgroundColor:
-        "#FFFFFF",
+      alignItems: "center",
+      backgroundColor: "#FFFFFF",
       borderRadius: 20,
       padding: 32
     },
@@ -1456,12 +1648,28 @@ const styles =
     emptyText: {
       color: "#718087",
       fontSize: 13,
+      lineHeight: 19,
       textAlign: "center"
     },
 
+    showAllButton: {
+      minHeight: 43,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#526D82",
+      borderRadius: 13,
+      paddingHorizontal: 18,
+      marginTop: 16
+    },
+
+    showAllButtonText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800"
+    },
+
     informationBox: {
-      backgroundColor:
-        "#E6EEF1",
+      backgroundColor: "#E6EEF1",
       borderRadius: 18,
       padding: 17,
       marginTop: 10

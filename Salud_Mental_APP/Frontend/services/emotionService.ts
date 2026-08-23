@@ -26,12 +26,35 @@ export interface CreateEmotionPayload {
   fecha_registro: string;
 }
 
+export interface CreateEmotionPayload {
+  emotion: string;
+  intensity: number;
+  description?: string;
+  fecha_registro: string;
+}
+
+export interface UnlockedAchievement {
+  id: number;
+  code: string;
+  title: string;
+  description: string | null;
+  criterion_type: string;
+}
+
 export interface CreateEmotionResponse {
   message: string;
+
   emotion: EmotionRecord;
+
   points_added: number;
-  progress: GamificationProgress;
+
+  progress:
+    GamificationProgress;
+
+  unlocked_achievements:
+    UnlockedAchievement[];
 }
+
 
 export type EmotionPeriod =
   | "hoy"

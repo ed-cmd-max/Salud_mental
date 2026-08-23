@@ -1,3 +1,6 @@
+import AchievementNotification
+  from "../../../components/AchievementNotification";
+
 import React, {
   useCallback,
   useEffect,
@@ -44,11 +47,13 @@ export default function ActivityDetailScreen() {
       id?: string | string[];
     }>();
 
-  const rawId = Array.isArray(params.id)
-    ? params.id[0]
-    : params.id;
+  const rawId =
+    Array.isArray(params.id)
+      ? params.id[0]
+      : params.id;
 
-  const activityId = Number(rawId);
+  const activityId =
+    Number(rawId);
 
   const isValidActivityId =
     Number.isInteger(activityId) &&
@@ -106,6 +111,24 @@ export default function ActivityDetailScreen() {
       null
     );
 
+  /*
+   * Cola de logros desbloqueados.
+   *
+   * Si una sola actividad desbloquea
+   * varios logros, se mostrarán
+   * uno después de otro.
+   */
+  const [
+    achievementQueue,
+    setAchievementQueue
+  ] = useState<string[]>(
+    []
+  );
+
+  const currentAchievement =
+    achievementQueue[0] ??
+    null;
+
   const successOpacity =
     useRef(
       new Animated.Value(0)
@@ -133,6 +156,7 @@ export default function ActivityDetailScreen() {
           );
 
           setIsLoading(false);
+
           return;
         }
 
@@ -216,6 +240,7 @@ export default function ActivityDetailScreen() {
 
     if (!hasUnsavedChanges) {
       action();
+
       return;
     }
 
@@ -268,6 +293,7 @@ export default function ActivityDetailScreen() {
       setFormError(
         "La respuesta de la actividad es obligatoria"
       );
+
       return;
     }
 
@@ -278,6 +304,7 @@ export default function ActivityDetailScreen() {
       setFormError(
         "La respuesta no puede superar los 2000 caracteres"
       );
+
       return;
     }
 
@@ -288,6 +315,7 @@ export default function ActivityDetailScreen() {
       setFormError(
         "La observación no puede superar los 500 caracteres"
       );
+
       return;
     }
 
@@ -308,6 +336,43 @@ export default function ActivityDetailScreen() {
         );
 
       setSuccessResult(result);
+
+      /*
+       * El backend devuelve exactamente
+       * los logros que fueron desbloqueados
+       * durante esta actividad.
+       */
+      const newAchievementTitles =
+        (
+          result
+            .unlocked_achievements ??
+          []
+        )
+          .map(
+            (achievement) =>
+              achievement.title
+          )
+          .filter(
+            (title) =>
+              title.trim() !== ""
+          );
+
+      /*
+       * Los agregamos a la cola para
+       * mostrarlos uno después de otro.
+       */
+      if (
+        newAchievementTitles.length >
+        0
+      ) {
+        setAchievementQueue(
+          (currentQueue) => [
+            ...currentQueue,
+            ...newAchievementTitles
+          ]
+        );
+      }
+
       setResponseText("");
       setObservation("");
     } catch (error) {
@@ -332,6 +397,16 @@ export default function ActivityDetailScreen() {
     <SafeAreaView
       style={styles.safeArea}
     >
+      <AchievementNotification
+        title={currentAchievement}
+        onHide={() => {
+          setAchievementQueue(
+            (currentQueue) =>
+              currentQueue.slice(1)
+          );
+        }}
+      />
+
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={

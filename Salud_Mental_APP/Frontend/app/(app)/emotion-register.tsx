@@ -1,3 +1,6 @@
+import AchievementNotification
+  from "../../components/AchievementNotification";
+
 import {
   displayDateToIso,
   formatDateInput,
@@ -106,7 +109,9 @@ export default function EmotionRegisterScreen() {
   const [
     selectedEmotion,
     setSelectedEmotion
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     intensity,
@@ -144,6 +149,24 @@ export default function EmotionRegisterScreen() {
     useState<CreateEmotionResponse | null>(
       null
     );
+
+  /*
+   * Cola de logros desbloqueados.
+   *
+   * Si una sola acción desbloquea
+   * varios logros, se mostrarán
+   * uno después de otro.
+   */
+  const [
+    achievementQueue,
+    setAchievementQueue
+  ] = useState<string[]>(
+    []
+  );
+
+  const currentAchievement =
+    achievementQueue[0] ??
+    null;
 
   const successOpacity =
     useRef(
@@ -195,6 +218,7 @@ export default function EmotionRegisterScreen() {
       setErrorMessage(
         "Selecciona la emoción que estás sintiendo"
       );
+
       return;
     }
 
@@ -207,6 +231,7 @@ export default function EmotionRegisterScreen() {
       setErrorMessage(
         "Ingresa una fecha válida en formato DD/MM/AAAA"
       );
+
       return;
     }
 
@@ -217,6 +242,7 @@ export default function EmotionRegisterScreen() {
       setErrorMessage(
         "La fecha del registro no puede ser futura"
       );
+
       return;
     }
 
@@ -230,29 +256,78 @@ export default function EmotionRegisterScreen() {
       setErrorMessage(
         "La descripción no puede superar los 500 caracteres"
       );
+
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      /*
+       * El backend registra la emoción,
+       * actualiza la gamificación y devuelve
+       * exactamente los logros que fueron
+       * desbloqueados durante esta acción.
+       */
       const result =
         await createEmotion({
           emotion:
             selectedEmotion,
+
           intensity,
+
           description:
             normalizedDescription ||
             undefined,
+
           fecha_registro:
             normalizedDate
         });
 
       setSuccessResult(result);
 
+      /*
+       * Tomamos todos los logros que
+       * el backend acaba de desbloquear.
+       */
+      const newAchievementTitles =
+        (
+          result
+            .unlocked_achievements ??
+          []
+        )
+          .map(
+            (achievement) =>
+              achievement.title
+          )
+          .filter(
+            (title) =>
+              title.trim() !== ""
+          );
+
+      /*
+       * Los agregamos a la cola.
+       *
+       * No utilizamos find(), porque una
+       * misma acción puede desbloquear
+       * varios logros.
+       */
+      if (
+        newAchievementTitles.length >
+        0
+      ) {
+        setAchievementQueue(
+          (currentQueue) => [
+            ...currentQueue,
+            ...newAchievementTitles
+          ]
+        );
+      }
+
       setSelectedEmotion(null);
       setIntensity(5);
       setDescription("");
+
       setRecordDate(
         getTodayDisplayDate()
       );
@@ -272,6 +347,23 @@ export default function EmotionRegisterScreen() {
     <SafeAreaView
       style={styles.safeArea}
     >
+      <AchievementNotification
+        title={currentAchievement}
+        onHide={() => {
+          /*
+           * Cuando desaparece la notificación,
+           * eliminamos el primer logro.
+           *
+           * Automáticamente aparecerá el
+           * siguiente de la cola.
+           */
+          setAchievementQueue(
+            (currentQueue) =>
+              currentQueue.slice(1)
+          );
+        }}
+      />
+
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={
@@ -320,7 +412,9 @@ export default function EmotionRegisterScreen() {
             </Text>
           </View>
 
-          <View style={styles.formCard}>
+          <View
+            style={styles.formCard}
+          >
             <Text
               style={
                 styles.sectionTitle
@@ -410,7 +504,10 @@ export default function EmotionRegisterScreen() {
                         {isSelected
                           ? "✓ "
                           : ""}
-                        {emotion.name}
+
+                        {
+                          emotion.name
+                        }
                       </Text>
                     </Pressable>
                   );
@@ -867,324 +964,347 @@ export default function EmotionRegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F2F6F7"
-  },
-
-  keyboardView: {
-    flex: 1
-  },
-
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 40
-  },
-
-  backButton: {
-    alignSelf: "flex-start",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    marginBottom: 10
-  },
-
-  backText: {
-    color: "#526D82",
-    fontSize: 16,
-    fontWeight: "700"
-  },
-
-  header: {
-    marginBottom: 22
-  },
-
-  title: {
-    color: "#243642",
-    fontSize: 30,
-    fontWeight: "800",
-    marginBottom: 8
-  },
-
-  subtitle: {
-    color: "#60717A",
-    fontSize: 15,
-    lineHeight: 22
-  },
-
-  formCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    padding: 20,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 5
+const styles =
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: "#F2F6F7"
     },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3
-  },
 
-  sectionTitle: {
-    color: "#243642",
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 5
-  },
+    keyboardView: {
+      flex: 1
+    },
 
-  sectionHelp: {
-    color: "#718087",
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 15
-  },
+    scrollContent: {
+      paddingHorizontal: 20,
+      paddingTop: 22,
+      paddingBottom: 40
+    },
 
-  emotionsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 10
-  },
+    backButton: {
+      alignSelf: "flex-start",
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      marginBottom: 10
+    },
 
-  emotionButton: {
-    width: "48.5%",
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#D6E0E4",
-    borderRadius: 16,
-    paddingHorizontal: 13,
-    backgroundColor: "#F8FAFB"
-  },
+    backText: {
+      color: "#526D82",
+      fontSize: 16,
+      fontWeight: "700"
+    },
 
-  emotionButtonSelected: {
-    borderColor: "#526D82",
-    backgroundColor: "#E5EEF2"
-  },
+    header: {
+      marginBottom: 22
+    },
 
-  emotionEmoji: {
-    fontSize: 25,
-    marginRight: 9
-  },
+    title: {
+      color: "#243642",
+      fontSize: 30,
+      fontWeight: "800",
+      marginBottom: 8
+    },
 
-  emotionName: {
-    flex: 1,
-    color: "#53646D",
-    fontSize: 13,
-    fontWeight: "700"
-  },
+    subtitle: {
+      color: "#60717A",
+      fontSize: 15,
+      lineHeight: 22
+    },
 
-  emotionNameSelected: {
-    color: "#243642"
-  },
+    formCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      padding: 20,
 
-  divider: {
-    height: 1,
-    backgroundColor: "#E5ECEF",
-    marginVertical: 22
-  },
+      shadowColor: "#000000",
 
-  intensityContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 9
-  },
+      shadowOffset: {
+        width: 0,
+        height: 5
+      },
 
-  intensityButton: {
-    minWidth: 44,
-    height: 44,
-    paddingHorizontal: 5,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#D5DEE2",
-    borderRadius: 22,
-    backgroundColor: "#F8FAFB"
-  },
+      shadowOpacity: 0.07,
+      shadowRadius: 12,
+      elevation: 3
+    },
 
-  intensityButtonSelected: {
-    backgroundColor: "#526D82",
-    borderColor: "#526D82"
-  },
+    sectionTitle: {
+      color: "#243642",
+      fontSize: 18,
+      fontWeight: "800",
+      marginBottom: 5
+    },
 
-  intensityText: {
-    color: "#52636D",
-    fontSize: 14,
-    fontWeight: "800"
-  },
+    sectionHelp: {
+      color: "#718087",
+      fontSize: 13,
+      lineHeight: 19,
+      marginBottom: 15
+    },
 
-  intensityTextSelected: {
-    color: "#FFFFFF"
-  },
+    emotionsContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent:
+        "space-between",
+      rowGap: 10
+    },
 
-  intensityLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 11,
-    paddingHorizontal: 3
-  },
+    emotionButton: {
+      width: "48.5%",
+      minHeight: 72,
 
-  intensityLabel: {
-    color: "#839097",
-    fontSize: 12
-  },
+      flexDirection: "row",
+      alignItems: "center",
 
-  intensitySummary: {
-    alignItems: "center",
-    marginTop: 12
-  },
+      borderWidth: 1,
+      borderColor: "#D6E0E4",
+      borderRadius: 16,
 
-  intensitySummaryText: {
-    color: "#526D82",
-    fontSize: 13,
-    fontWeight: "800"
-  },
+      paddingHorizontal: 13,
 
-  label: {
-    color: "#243642",
-    fontSize: 14,
-    fontWeight: "800",
-    marginBottom: 8
-  },
+      backgroundColor: "#F8FAFB"
+    },
 
-  input: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderColor: "#D5DEE2",
-    borderRadius: 14,
-    paddingHorizontal: 15,
-    color: "#243642",
-    backgroundColor: "#F8FAFB",
-    fontSize: 15,
-    marginBottom: 7
-  },
+    emotionButtonSelected: {
+      borderColor: "#526D82",
+      backgroundColor: "#E5EEF2"
+    },
 
-  descriptionInput: {
-    minHeight: 120,
-    paddingTop: 14,
-    paddingBottom: 14
-  },
+    emotionEmoji: {
+      fontSize: 25,
+      marginRight: 9
+    },
 
-  fieldHelp: {
-    color: "#87939A",
-    fontSize: 12,
-    marginBottom: 19
-  },
+    emotionName: {
+      flex: 1,
+      color: "#53646D",
+      fontSize: 13,
+      fontWeight: "700"
+    },
 
-  characterCounter: {
-    color: "#87939A",
-    fontSize: 12,
-    textAlign: "right",
-    marginBottom: 16
-  },
+    emotionNameSelected: {
+      color: "#243642"
+    },
 
-  errorBox: {
-    backgroundColor: "#FDECEC",
-    borderRadius: 13,
-    padding: 13,
-    marginBottom: 16
-  },
+    divider: {
+      height: 1,
+      backgroundColor: "#E5ECEF",
+      marginVertical: 22
+    },
 
-  errorText: {
-    color: "#A33232",
-    fontSize: 13,
-    lineHeight: 19
-  },
+    intensityContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      gap: 9
+    },
 
-  successBox: {
-    backgroundColor: "#E7F3EA",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 17
-  },
+    intensityButton: {
+      minWidth: 44,
+      height: 44,
 
-  successTitle: {
-    color: "#315F40",
-    fontSize: 16,
-    fontWeight: "800",
-    marginBottom: 5
-  },
+      paddingHorizontal: 5,
 
-  successText: {
-    color: "#486D54",
-    fontSize: 13,
-    lineHeight: 19
-  },
+      alignItems: "center",
+      justifyContent: "center",
 
-  progressSummary: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 15
-  },
+      borderWidth: 1,
+      borderColor: "#D5DEE2",
+      borderRadius: 22,
 
-  progressItem: {
-    flex: 1,
-    alignItems: "center"
-  },
+      backgroundColor: "#F8FAFB"
+    },
 
-  progressValue: {
-    color: "#315F40",
-    fontSize: 19,
-    fontWeight: "900"
-  },
+    intensityButtonSelected: {
+      backgroundColor: "#526D82",
+      borderColor: "#526D82"
+    },
 
-  progressLabel: {
-    color: "#62806B",
-    fontSize: 12,
-    marginTop: 2,
-    textAlign: "center"
-  },
+    intensityText: {
+      color: "#52636D",
+      fontSize: 14,
+      fontWeight: "800"
+    },
 
-  submitButton: {
-    minHeight: 55,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#526D82",
-    borderRadius: 15
-  },
+    intensityTextSelected: {
+      color: "#FFFFFF"
+    },
 
-  submitButtonText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800"
-  },
+    intensityLabels: {
+      flexDirection: "row",
+      justifyContent:
+        "space-between",
 
-  submitLoadingContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8
-  },
+      marginTop: 11,
+      paddingHorizontal: 3
+    },
 
-  buttonPressed: {
-    opacity: 0.82
-  },
+    intensityLabel: {
+      color: "#839097",
+      fontSize: 12
+    },
 
-  disabledButton: {
-    opacity: 0.6
-  },
+    intensitySummary: {
+      alignItems: "center",
+      marginTop: 12
+    },
 
-  informationBox: {
-    backgroundColor: "#E6EEF1",
-    borderRadius: 18,
-    padding: 17,
-    marginTop: 17
-  },
+    intensitySummaryText: {
+      color: "#526D82",
+      fontSize: 13,
+      fontWeight: "800"
+    },
 
-  informationTitle: {
-    color: "#405A69",
-    fontSize: 14,
-    fontWeight: "800",
-    marginBottom: 5
-  },
+    label: {
+      color: "#243642",
+      fontSize: 14,
+      fontWeight: "800",
+      marginBottom: 8
+    },
 
-  informationText: {
-    color: "#5F737E",
-    fontSize: 13,
-    lineHeight: 19
-  }
-});
+    input: {
+      minHeight: 52,
+
+      borderWidth: 1,
+      borderColor: "#D5DEE2",
+      borderRadius: 14,
+
+      paddingHorizontal: 15,
+
+      color: "#243642",
+      backgroundColor: "#F8FAFB",
+
+      fontSize: 15,
+
+      marginBottom: 7
+    },
+
+    descriptionInput: {
+      minHeight: 120,
+      paddingTop: 14,
+      paddingBottom: 14
+    },
+
+    fieldHelp: {
+      color: "#87939A",
+      fontSize: 12,
+      marginBottom: 19
+    },
+
+    characterCounter: {
+      color: "#87939A",
+      fontSize: 12,
+      textAlign: "right",
+      marginBottom: 16
+    },
+
+    errorBox: {
+      backgroundColor: "#FDECEC",
+      borderRadius: 13,
+      padding: 13,
+      marginBottom: 16
+    },
+
+    errorText: {
+      color: "#A33232",
+      fontSize: 13,
+      lineHeight: 19
+    },
+
+    successBox: {
+      backgroundColor: "#E7F3EA",
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 17
+    },
+
+    successTitle: {
+      color: "#315F40",
+      fontSize: 16,
+      fontWeight: "800",
+      marginBottom: 5
+    },
+
+    successText: {
+      color: "#486D54",
+      fontSize: 13,
+      lineHeight: 19
+    },
+
+    progressSummary: {
+      flexDirection: "row",
+      justifyContent:
+        "space-between",
+      marginTop: 15
+    },
+
+    progressItem: {
+      flex: 1,
+      alignItems: "center"
+    },
+
+    progressValue: {
+      color: "#315F40",
+      fontSize: 19,
+      fontWeight: "900"
+    },
+
+    progressLabel: {
+      color: "#62806B",
+      fontSize: 12,
+      marginTop: 2,
+      textAlign: "center"
+    },
+
+    submitButton: {
+      minHeight: 55,
+
+      alignItems: "center",
+      justifyContent: "center",
+
+      backgroundColor: "#526D82",
+      borderRadius: 15
+    },
+
+    submitButtonText: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "800"
+    },
+
+    submitLoadingContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8
+    },
+
+    buttonPressed: {
+      opacity: 0.82
+    },
+
+    disabledButton: {
+      opacity: 0.6
+    },
+
+    informationBox: {
+      backgroundColor: "#E6EEF1",
+      borderRadius: 18,
+      padding: 17,
+      marginTop: 17
+    },
+
+    informationTitle: {
+      color: "#405A69",
+      fontSize: 14,
+      fontWeight: "800",
+      marginBottom: 5
+    },
+
+    informationText: {
+      color: "#5F737E",
+      fontSize: 13,
+      lineHeight: 19
+    }
+  });

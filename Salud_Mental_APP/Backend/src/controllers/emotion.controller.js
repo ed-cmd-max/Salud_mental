@@ -591,23 +591,24 @@ export async function createEmotion(
       "COMMIT"
     );
 
-    return res
-      .status(201)
-      .json({
-        message:
-          "Estado emocional registrado correctamente",
+    return res.status(201).json({
+  message:
+    "Estado emocional registrado correctamente",
 
-        emotion:
-          result.rows[0],
+  emotion:
+    result.rows[0],
 
-        points_added:
-          gamificationResult
-            .points_added,
+  points_added:
+    gamificationResult.points_added,
 
-        progress:
-          gamificationResult
-            .progress
-      });
+  progress:
+    gamificationResult.progress,
+
+  unlocked_achievements:
+    gamificationResult
+      .unlocked_achievements
+});
+    
   } catch (error) {
     if (client) {
       try {
